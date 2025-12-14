@@ -1,5 +1,6 @@
 node_modules/
 auth_info/
+docs/
 server.log
 .env
 .DS_Store
@@ -8,4 +9,3 @@ server.log
 *~
 .vscode/
 .idea/
-node_modules
