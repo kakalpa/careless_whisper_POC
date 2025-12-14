@@ -1,0 +1,1106 @@
+// Careless Whisper PoC Attack Simulator - Frontend
+const API_URL = 'http://localhost:3000/api';
+let currentSession = null;
+let currentAttackId = null;
+let charts = {};
+let autoScrollLogs = true;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    setupEventListeners();
+    loadActiveSessions();
+    addLog('INFO', 'Page loaded. Ready to begin attack simulation.');
+});
+
+// ==================== LOGGING SYSTEM ====================
+
+function addLog(level, message) {
+    const logContent = document.getElementById('log-content');
+    const time = new Date().toLocaleTimeString();
+    
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${level.toLowerCase()}`;
+    entry.innerHTML = `
+        <span class="log-time">[${time}]</span>
+        <span class="log-level">[${level}]</span>
+        <span class="log-text">${message}</span>
+    `;
+    
+    logContent.appendChild(entry);
+    
+    if (autoScrollLogs) {
+        logContent.parentElement.scrollTop = logContent.parentElement.scrollHeight;
+    }
+}
+
+function clearLogs() {
+    const logContent = document.getElementById('log-content');
+    logContent.innerHTML = `
+        <div class="log-entry log-system">
+            <span class="log-time">[${new Date().toLocaleTimeString()}]</span>
+            <span class="log-level">[SYSTEM]</span>
+            <span class="log-text">Logs cleared by user.</span>
+        </div>
+    `;
+    addLog('SYSTEM', 'Logs cleared.');
+}
+
+// ==================== EVENT LISTENERS ====================
+
+function setupEventListeners() {
+    // Session management
+    document.getElementById('btn-create-session').addEventListener('click', createSession);
+    document.getElementById('btn-authenticate').addEventListener('click', authenticateSession);
+    
+    // Log controls
+    document.getElementById('btn-clear-logs').addEventListener('click', clearLogs);
+    document.getElementById('btn-toggle-logs').addEventListener('click', () => {
+        autoScrollLogs = !autoScrollLogs;
+        document.getElementById('btn-toggle-logs').textContent = `Auto-Scroll: ${autoScrollLogs ? 'ON' : 'OFF'}`;
+        addLog('SYSTEM', `Auto-scroll ${autoScrollLogs ? 'enabled' : 'disabled'}.`);
+    });
+    
+    // Attack type selection
+    document.getElementById('attack-type').addEventListener('change', onAttackTypeChange);
+    
+    // Parameter sliders
+    document.getElementById('probe-freq').addEventListener('input', (e) => {
+        document.getElementById('freq-display').textContent = e.target.value + 'ms';
+    });
+    document.getElementById('probe-duration').addEventListener('input', (e) => {
+        document.getElementById('duration-display').textContent = e.target.value + 's';
+    });
+    document.getElementById('monitor-interval').addEventListener('input', (e) => {
+        document.getElementById('interval-display').textContent = e.target.value + 'ms';
+    });
+    document.getElementById('monitor-duration').addEventListener('input', (e) => {
+        document.getElementById('monitor-display').textContent = e.target.value + 's';
+    });
+    document.getElementById('fingerprint-samples').addEventListener('input', (e) => {
+        document.getElementById('samples-display').textContent = e.target.value + ' samples';
+    });
+    document.getElementById('payload-size').addEventListener('input', (e) => {
+        document.getElementById('payload-display').textContent = e.target.value + ' KB';
+    });
+    document.getElementById('exhaust-freq').addEventListener('input', (e) => {
+        document.getElementById('exhaust-freq-display').textContent = e.target.value + '/sec';
+    });
+    document.getElementById('exhaust-duration').addEventListener('input', (e) => {
+        document.getElementById('exhaust-duration-display').textContent = e.target.value + 's';
+    });
+
+    // Attack launch
+    document.getElementById('btn-launch-attack').addEventListener('click', launchAttack);
+    document.getElementById('btn-generate-report').addEventListener('click', generateReport);
+}
+
+// ==================== SESSION MANAGEMENT ====================
+
+async function createSession() {
+    try {
+        addLog('INFO', 'Creating new attack session...');
+        const response = await fetch(`${API_URL}/session/create`, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            currentSession = data.sessionId;
+            updateSessionUI();
+            
+            // Enable controls
+            document.getElementById('btn-authenticate').disabled = false;
+            document.getElementById('target-number').disabled = false;
+            document.getElementById('attack-type').disabled = false;
+            document.getElementById('btn-launch-attack').disabled = false;
+            
+            addLog('SUCCESS', `Session created: ${currentSession.substring(0, 16)}...`);
+        } else {
+            addLog('ERROR', `Failed to create session: ${data.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        addLog('ERROR', `Exception creating session: ${error.message}`);
+    }
+}
+
+async function authenticateSession() {
+    try {
+        addLog('INFO', 'Authenticating with WhatsApp...');
+        const response = await fetch(`${API_URL}/session/${currentSession}/authenticate`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('session-status').textContent = '✓ Authenticated';
+            addLog('SUCCESS', 'WhatsApp authentication successful.');
+        } else {
+            addLog('ERROR', `Authentication failed: ${data.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        addLog('ERROR', `Exception during authentication: ${error.message}`);
+    }
+}
+
+async function updateSessionUI() {
+    document.getElementById('session-info').style.display = 'block';
+    document.getElementById('session-id').textContent = currentSession.substring(0, 32) + '...';
+}
+
+async function loadActiveSessions() {
+    try {
+        const response = await fetch(`${API_URL}/sessions`);
+        const data = await response.json();
+
+        if (data.success && data.sessions.length > 0) {
+            const html = data.sessions.map(s => `
+                <tr>
+                    <td>${s.sessionId.substring(0, 16)}...</td>
+                    <td>${s.authenticated ? '✓' : '✗'}</td>
+                    <td>${s.targetNumber || 'None'}</td>
+                    <td>${s.probes || 0}</td>
+                </tr>
+            `).join('');
+
+            document.getElementById('sessions-table').innerHTML = `
+                <table>
+                    <thead>
+                        <tr><th>Session</th><th>Auth</th><th>Target</th><th>Probes</th></tr>
+                    </thead>
+                    <tbody>${html}</tbody>
+                </table>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading sessions:', error);
+    }
+}
+
+// ==================== ATTACK TYPE HANDLING ====================
+
+function onAttackTypeChange() {
+    const attackType = document.getElementById('attack-type').value;
+    
+    // Hide all parameter groups
+    document.getElementById('probe-params').style.display = 'none';
+    document.getElementById('monitor-params').style.display = 'none';
+    document.getElementById('fingerprint-params').style.display = 'none';
+    document.getElementById('exhaust-params').style.display = 'none';
+
+    // Show relevant parameters
+    switch(attackType) {
+        case 'probe':
+            document.getElementById('probe-params').style.display = 'block';
+            addLog('INFO', 'Selected: RTT Probing attack');
+            break;
+        case 'devices':
+            addLog('INFO', 'Selected: Device Detection attack');
+            break;
+        case 'monitor':
+            document.getElementById('monitor-params').style.display = 'block';
+            addLog('INFO', 'Selected: Device Monitoring attack');
+            break;
+        case 'fingerprint':
+            document.getElementById('fingerprint-params').style.display = 'block';
+            addLog('INFO', 'Selected: Behavioral Fingerprinting attack');
+            break;
+        case 'exhaust':
+            document.getElementById('exhaust-params').style.display = 'block';
+            addLog('INFO', 'Selected: Resource Exhaustion attack');
+            break;
+    }
+}
+
+// ==================== ATTACK EXECUTION ====================
+
+async function launchAttack() {
+    const targetNumber = document.getElementById('target-number').value.trim();
+    const attackType = document.getElementById('attack-type').value;
+
+    if (!targetNumber) {
+        addLog('WARNING', 'No target number provided. Enter a WhatsApp number to proceed.');
+        return;
+    }
+
+    if (!currentSession) {
+        addLog('ERROR', 'No active session. Create a session first.');
+        return;
+    }
+
+    addLog('INFO', `Launching ${attackType} attack on ${targetNumber}...`);
+    document.getElementById('attack-status').style.display = 'block';
+    document.getElementById('status-text').textContent = 'Launching attack...';
+
+    try {
+        let result;
+
+        switch(attackType) {
+            case 'probe':
+                addLog('DEBUG', 'Starting RTT probing...');
+                result = await launchProbeAttack(targetNumber);
+                break;
+            case 'devices':
+                addLog('DEBUG', 'Starting device detection...');
+                result = await launchDeviceDetection(targetNumber);
+                break;
+            case 'monitor':
+                addLog('DEBUG', 'Starting device monitoring...');
+                result = await launchDeviceMonitoring(targetNumber);
+                break;
+            case 'fingerprint':
+                addLog('DEBUG', 'Starting behavioral fingerprinting...');
+                result = await launchFingerprinting(targetNumber);
+                break;
+            case 'exhaust':
+                addLog('DEBUG', 'Starting resource exhaustion simulation...');
+                result = await launchExhaustionAttack(targetNumber);
+                break;
+        }
+
+        if (result && result.success) {
+            const attackId = result.attackId || result.probeId || result.monitorId;
+            addLog('SUCCESS', `Attack launched successfully. ID: ${attackId.substring(0, 16)}...`);
+            currentAttackId = attackId;
+            
+            // Poll for results
+            pollResults(currentAttackId, attackType);
+        } else {
+            addLog('ERROR', `Attack failed: ${result?.error || 'Unknown error'}`);
+            document.getElementById('attack-status').style.display = 'none';
+        }
+    } catch (error) {
+        addLog('ERROR', `Exception launching attack: ${error.message}`);
+        document.getElementById('attack-status').style.display = 'none';
+    }
+}
+
+async function launchProbeAttack(targetNumber) {
+    const frequency = parseInt(document.getElementById('probe-freq').value);
+    const duration = parseInt(document.getElementById('probe-duration').value) * 1000;
+
+    addLog('DEBUG', `Probe settings: frequency=${frequency}ms, duration=${duration/1000}s`);
+
+    const response = await fetch(`${API_URL}/probe/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            frequency,
+            duration
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchDeviceDetection(targetNumber) {
+    const response = await fetch(`${API_URL}/target/detect-devices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchDeviceMonitoring(targetNumber) {
+    const interval = parseInt(document.getElementById('monitor-interval').value);
+    const duration = parseInt(document.getElementById('monitor-duration').value) * 1000;
+
+    addLog('DEBUG', `Monitor settings: interval=${interval}ms, duration=${duration/1000}s`);
+
+    const response = await fetch(`${API_URL}/target/monitor-devices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            interval,
+            duration
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchFingerprinting(targetNumber) {
+    const sampleCount = parseInt(document.getElementById('fingerprint-samples').value);
+
+    addLog('DEBUG', `Fingerprinting with ${sampleCount} samples`);
+
+    const response = await fetch(`${API_URL}/target/fingerprint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            sampleCount
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchExhaustionAttack(targetNumber) {
+    const payloadSize = parseInt(document.getElementById('payload-size').value);
+    const frequency = parseInt(document.getElementById('exhaust-freq').value);
+    const duration = parseInt(document.getElementById('exhaust-duration').value) * 1000;
+
+    addLog('DEBUG', `Exhaustion settings: payload=${payloadSize}KB, frequency=${frequency}/sec, duration=${duration/1000}s`);
+
+    const response = await fetch(`${API_URL}/attack/exhaust-resources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            payloadSize,
+            frequency,
+            duration
+        })
+    });
+
+    return await response.json();
+}
+
+// ==================== RESULTS POLLING ====================
+
+let pollTimeout;
+
+function pollResults(attackId, attackType) {
+    const pollEndpoint = attackType === 'monitor' ? `/api/monitoring/${attackId}` : `/api/probe/${attackId}`;
+
+    addLog('INFO', `Polling for results... (${pollEndpoint})`);
+
+    fetch(API_URL + pollEndpoint)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                addLog('SUCCESS', 'Attack completed! Processing results...');
+                displayResults(data.data, attackType);
+                document.getElementById('status-text').textContent = '✓ Attack Complete!';
+            } else {
+                // Still running, poll again
+                pollTimeout = setTimeout(() => pollResults(attackId, attackType), 1000);
+            }
+        })
+        .catch(error => {
+            addLog('DEBUG', `Polling... (${error.message})`);
+            // Still processing
+            pollTimeout = setTimeout(() => pollResults(attackId, attackType), 1000);
+        });
+}
+
+// ==================== RESULTS DISPLAY ====================
+
+function displayResults(data, attackType) {
+    // Hide all result sections
+    document.getElementById('rtt-results').style.display = 'none';
+    document.getElementById('device-results').style.display = 'none';
+    document.getElementById('monitor-results').style.display = 'none';
+    document.getElementById('fingerprint-results').style.display = 'none';
+    document.getElementById('exhaustion-results').style.display = 'none';
+
+    addLog('INFO', `Displaying results for ${attackType} attack...`);
+
+    switch(attackType) {
+        case 'probe':
+            displayRTTResults(data);
+            break;
+        case 'devices':
+            displayDeviceResults(data);
+            break;
+        case 'monitor':
+            displayMonitorResults(data);
+            break;
+        case 'fingerprint':
+            displayFingerprintResults(data);
+            break;
+        case 'exhaust':
+            displayExhaustionResults(data);
+            break;
+    }
+}
+
+function displayRTTResults(data) {
+    document.getElementById('rtt-results').style.display = 'block';
+
+    addLog('DEBUG', `RTT Results: ${data.measurements.length} measurements collected`);
+
+    // Draw chart
+    const ctx = document.getElementById('rttChart').getContext('2d');
+    if (charts.rtt) charts.rtt.destroy();
+
+    charts.rtt = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.measurements.map((_, i) => i),
+            datasets: [{
+                label: 'RTT (ms)',
+                data: data.measurements.map(m => m.rtt),
+                borderColor: '#ff6b6b',
+                backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: true } }
+        }
+    });
+
+    // Display stats
+    const analysis = data.analysis;
+    const statsHtml = `
+        <div class="stat">
+            <span class="label">Mean RTT</span>
+            <span class="value">${analysis.mean}ms</span>
+        </div>
+        <div class="stat">
+            <span class="label">Std Dev</span>
+            <span class="value">${analysis.stdDev}ms</span>
+        </div>
+        <div class="stat">
+            <span class="label">Device State</span>
+            <span class="value">${analysis.deviceState}</span>
+        </div>
+        <div class="stat">
+            <span class="label">Confidence</span>
+            <span class="value">${analysis.confidence}%</span>
+        </div>
+    `;
+    document.getElementById('rtt-stats').innerHTML = statsHtml;
+    addLog('INFO', `Device state inferred: ${analysis.deviceState} (${analysis.confidence}% confidence)`);
+}
+
+function displayDeviceResults(data) {
+    document.getElementById('device-results').style.display = 'block';
+
+    addLog('INFO', `Device detection complete: ${data.devices.length} devices found`);
+
+    const tbody = document.getElementById('devices-body');
+    tbody.innerHTML = data.devices.map(device => `
+        <tr>
+            <td>Device ${device.id}</td>
+            <td>${device.type}</td>
+            <td>${device.os}</td>
+            <td>
+                <span class="status ${device.status}">
+                    ${device.status.toUpperCase()}
+                </span>
+            </td>
+            <td>${new Date(device.lastSeen).toLocaleTimeString()}</td>
+        </tr>
+    `).join('');
+
+    data.devices.forEach(d => {
+        addLog('DEBUG', `Detected: ${d.type} (${d.os}) - ${d.status}`);
+    });
+}
+
+function displayMonitorResults(data) {
+    document.getElementById('monitor-results').style.display = 'block';
+
+    addLog('INFO', 'Device monitoring timeline generated');
+
+    // Timeline
+    const timeline = document.getElementById('timeline');
+    timeline.innerHTML = data.monitoring.monitoring.slice(0, 10).map((event, idx) => `
+        <div class="timeline-event">
+            <time>${new Date(event.timestamp).toLocaleTimeString()}</time>
+            <div class="devices">
+                ${event.devices.map(d => `
+                    <span class="device-badge ${d.status}">
+                        ${d.type}: ${d.status}
+                    </span>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayFingerprintResults(data) {
+    document.getElementById('fingerprint-results').style.display = 'block';
+
+    addLog('INFO', 'Behavioral fingerprint extracted');
+
+    const fingerprint = data.fingerprint;
+    const ctx = document.getElementById('fingerprintChart').getContext('2d');
+    if (charts.fingerprint) charts.fingerprint.destroy();
+
+    charts.fingerprint = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(fingerprint),
+            datasets: [{
+                label: 'Mean RTT (ms)',
+                data: Object.values(fingerprint).map(v => v.mean),
+                backgroundColor: '#667eea'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: true } }
+        }
+    });
+
+    const html = Object.entries(fingerprint).map(([activity, stats]) => `
+        <div class="fingerprint-item">
+            <h4>${activity}</h4>
+            <p>Mean: ${stats.mean}ms | Samples: ${stats.samples}</p>
+            <p>Pattern: ${stats.pattern}</p>
+        </div>
+    `).join('');
+    document.getElementById('fingerprint-data').innerHTML = html;
+}
+
+function displayExhaustionResults(data) {
+    document.getElementById('exhaustion-results').style.display = 'block';
+
+    const metrics = data.metrics;
+    addLog('INFO', `Resource exhaustion: ${metrics.dataGenerated}MB data, ${metrics.estimatedBatteryDrain}% battery drain`);
+
+    const html = `
+        <div class="impact-item critical">
+            <h4>📊 Data Generated</h4>
+            <p class="value">${metrics.dataGenerated} MB</p>
+            <p>(${(metrics.dataGenerated / 1024).toFixed(1)} GB)</p>
+        </div>
+        <div class="impact-item danger">
+            <h4>🔋 Battery Drain</h4>
+            <p class="value">${metrics.estimatedBatteryDrain}%</p>
+            <p>of total battery</p>
+        </div>
+        <div class="impact-item info">
+            <h4>📨 Messages Sent</h4>
+            <p class="value">${metrics.messagesQueued}</p>
+            <p>total messages</p>
+        </div>
+        <div class="impact-item success">
+            <h4>🔇 Victim Notifications</h4>
+            <p class="value">${metrics.notificationCount}</p>
+            <p>COMPLETELY SILENT!</p>
+        </div>
+    `;
+    document.getElementById('impact-grid').innerHTML = html;
+}
+
+// ==================== REPORT GENERATION ====================
+
+async function generateReport() {
+    try {
+        addLog('INFO', 'Generating complete attack report...');
+        const response = await fetch(`${API_URL}/session/${currentSession}/report`);
+        const data = await response.json();
+
+        if (data.success) {
+            const report = data.report;
+            const html = `
+                <h3>Complete Attack Report</h3>
+                <p><strong>Session:</strong> ${report.sessionId.substring(0, 16)}...</p>
+                <p><strong>Target:</strong> ${report.targetNumber}</p>
+                <p><strong>Probes Sent:</strong> ${report.probeCount}</p>
+                
+                <h4>Detected Devices</h4>
+                <ul>
+                    ${report.devices.map(d => `<li>Device ${d.id}: ${d.type} (${d.os}) - ${d.status}</li>`).join('')}
+                </ul>
+
+                <h4>Threats Identified</h4>
+                <ul>
+                    ${Object.entries(report.threats).map(([threat, level]) => 
+                        `<li><strong>${threat}:</strong> ${level}</li>`
+                    ).join('')}
+                </ul>
+            `;
+            document.getElementById('report-content').innerHTML = html;
+            document.getElementById('report-content').style.display = 'block';
+            addLog('SUCCESS', 'Report generation complete!');
+        }
+    } catch (error) {
+        addLog('ERROR', `Error generating report: ${error.message}`);
+    }
+}
+
+// ==================== SESSION MANAGEMENT ====================
+
+async function createSession() {
+    try {
+        const response = await fetch(`${API_URL}/session/create`, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            currentSession = data.sessionId;
+            updateSessionUI();
+            
+            // Enable authentication button
+            document.getElementById('btn-authenticate').disabled = false;
+            document.getElementById('target-number').disabled = false;
+            document.getElementById('attack-type').disabled = false;
+            
+            showMessage(`✓ Session created: ${currentSession.substring(0, 16)}...`, 'success');
+        }
+    } catch (error) {
+        showMessage(`✗ Error: ${error.message}`, 'error');
+    }
+}
+
+async function authenticateSession() {
+    try {
+        const response = await fetch(`${API_URL}/session/${currentSession}/authenticate`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('session-status').textContent = '✓ Authenticated';
+            document.getElementById('btn-launch-attack').disabled = false;
+            showMessage('✓ WhatsApp authenticated successfully', 'success');
+        }
+    } catch (error) {
+        showMessage(`✗ Error: ${error.message}`, 'error');
+    }
+}
+
+async function updateSessionUI() {
+    document.getElementById('session-info').style.display = 'block';
+    document.getElementById('session-id').textContent = currentSession.substring(0, 32) + '...';
+}
+
+async function loadActiveSessions() {
+    try {
+        const response = await fetch(`${API_URL}/sessions`);
+        const data = await response.json();
+
+        if (data.success && data.sessions.length > 0) {
+            const html = data.sessions.map(s => `
+                <tr>
+                    <td>${s.sessionId.substring(0, 16)}...</td>
+                    <td>${s.authenticated ? '✓' : '✗'}</td>
+                    <td>${s.targetNumber}</td>
+                    <td>${s.probes}</td>
+                </tr>
+            `).join('');
+
+            document.getElementById('sessions-table').innerHTML = `
+                <table>
+                    <thead>
+                        <tr><th>Session</th><th>Auth</th><th>Target</th><th>Probes</th></tr>
+                    </thead>
+                    <tbody>${html}</tbody>
+                </table>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading sessions:', error);
+    }
+}
+
+// ==================== ATTACK TYPE HANDLING ====================
+
+function onAttackTypeChange() {
+    const attackType = document.getElementById('attack-type').value;
+    
+    // Hide all parameter groups
+    document.getElementById('probe-params').style.display = 'none';
+    document.getElementById('monitor-params').style.display = 'none';
+    document.getElementById('fingerprint-params').style.display = 'none';
+    document.getElementById('exhaust-params').style.display = 'none';
+
+    // Show relevant parameters
+    switch(attackType) {
+        case 'probe':
+            document.getElementById('probe-params').style.display = 'block';
+            break;
+        case 'monitor':
+            document.getElementById('monitor-params').style.display = 'block';
+            break;
+        case 'fingerprint':
+            document.getElementById('fingerprint-params').style.display = 'block';
+            break;
+        case 'exhaust':
+            document.getElementById('exhaust-params').style.display = 'block';
+            break;
+    }
+}
+
+// ==================== ATTACK EXECUTION ====================
+
+async function launchAttack() {
+    const targetNumber = document.getElementById('target-number').value.trim();
+    const attackType = document.getElementById('attack-type').value;
+
+    if (!targetNumber) {
+        showMessage('⚠️ Please enter target number', 'warning');
+        return;
+    }
+
+    if (!currentSession) {
+        showMessage('⚠️ No active session', 'warning');
+        return;
+    }
+
+    document.getElementById('attack-status').style.display = 'block';
+    document.getElementById('status-text').textContent = 'Launching attack...';
+
+    try {
+        let result;
+
+        switch(attackType) {
+            case 'probe':
+                result = await launchProbeAttack(targetNumber);
+                break;
+            case 'devices':
+                result = await launchDeviceDetection(targetNumber);
+                break;
+            case 'monitor':
+                result = await launchDeviceMonitoring(targetNumber);
+                break;
+            case 'fingerprint':
+                result = await launchFingerprinting(targetNumber);
+                break;
+            case 'exhaust':
+                result = await launchExhaustionAttack(targetNumber);
+                break;
+        }
+
+        if (result && result.success) {
+            showMessage(`✓ Attack launched: ${result.attackId || result.probeId}`, 'success');
+            currentAttackId = result.attackId || result.probeId;
+            
+            // Poll for results
+            pollResults(currentAttackId, attackType);
+        }
+    } catch (error) {
+        showMessage(`✗ Error: ${error.message}`, 'error');
+        document.getElementById('attack-status').style.display = 'none';
+    }
+}
+
+async function launchProbeAttack(targetNumber) {
+    const frequency = parseInt(document.getElementById('probe-freq').value);
+    const duration = parseInt(document.getElementById('probe-duration').value) * 1000;
+
+    const response = await fetch(`${API_URL}/probe/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            frequency,
+            duration
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchDeviceDetection(targetNumber) {
+    const response = await fetch(`${API_URL}/target/detect-devices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchDeviceMonitoring(targetNumber) {
+    const interval = parseInt(document.getElementById('monitor-interval').value);
+    const duration = parseInt(document.getElementById('monitor-duration').value) * 1000;
+
+    const response = await fetch(`${API_URL}/target/monitor-devices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            interval,
+            duration
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchFingerprinting(targetNumber) {
+    const sampleCount = parseInt(document.getElementById('fingerprint-samples').value);
+
+    const response = await fetch(`${API_URL}/target/fingerprint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            sampleCount
+        })
+    });
+
+    return await response.json();
+}
+
+async function launchExhaustionAttack(targetNumber) {
+    const payloadSize = parseInt(document.getElementById('payload-size').value);
+    const frequency = parseInt(document.getElementById('exhaust-freq').value);
+    const duration = parseInt(document.getElementById('exhaust-duration').value) * 1000;
+
+    const response = await fetch(`${API_URL}/attack/exhaust-resources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sessionId: currentSession,
+            targetNumber,
+            payloadSize,
+            frequency,
+            duration
+        })
+    });
+
+    return await response.json();
+}
+
+// ==================== RESULTS POLLING ====================
+
+
+function pollResults(attackId, attackType) {
+    const pollEndpoint = attackType === 'monitor' ? `/api/monitoring/${attackId}` : `/api/probe/${attackId}`;
+
+    fetch(API_URL + pollEndpoint)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                displayResults(data.data, attackType);
+                document.getElementById('status-text').textContent = '✓ Attack Complete!';
+            } else {
+                // Still running, poll again
+                pollTimeout = setTimeout(() => pollResults(attackId, attackType), 1000);
+            }
+        })
+        .catch(error => {
+            // Still processing
+            pollTimeout = setTimeout(() => pollResults(attackId, attackType), 1000);
+        });
+}
+
+// ==================== RESULTS DISPLAY ====================
+
+function displayResults(data, attackType) {
+    // Hide all result sections
+    document.getElementById('rtt-results').style.display = 'none';
+    document.getElementById('device-results').style.display = 'none';
+    document.getElementById('monitor-results').style.display = 'none';
+    document.getElementById('fingerprint-results').style.display = 'none';
+    document.getElementById('exhaustion-results').style.display = 'none';
+
+    switch(attackType) {
+        case 'probe':
+            displayRTTResults(data);
+            break;
+        case 'devices':
+            displayDeviceResults(data);
+            break;
+        case 'monitor':
+            displayMonitorResults(data);
+            break;
+        case 'fingerprint':
+            displayFingerprintResults(data);
+            break;
+        case 'exhaust':
+            displayExhaustionResults(data);
+            break;
+    }
+}
+
+function displayRTTResults(data) {
+    document.getElementById('rtt-results').style.display = 'block';
+
+    // Draw chart
+    const ctx = document.getElementById('rttChart').getContext('2d');
+    if (charts.rtt) charts.rtt.destroy();
+
+    charts.rtt = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.measurements.map((_, i) => i),
+            datasets: [{
+                label: 'RTT (ms)',
+                data: data.measurements.map(m => m.rtt),
+                borderColor: '#ff6b6b',
+                backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: true } }
+        }
+    });
+
+    // Display stats
+    const analysis = data.analysis;
+    const statsHtml = `
+        <div class="stat">
+            <span class="label">Mean RTT</span>
+            <span class="value">${analysis.mean}ms</span>
+        </div>
+        <div class="stat">
+            <span class="label">Std Dev</span>
+            <span class="value">${analysis.stdDev}ms</span>
+        </div>
+        <div class="stat">
+            <span class="label">Device State</span>
+            <span class="value">${analysis.deviceState}</span>
+        </div>
+        <div class="stat">
+            <span class="label">Confidence</span>
+            <span class="value">${analysis.confidence}%</span>
+        </div>
+    `;
+    document.getElementById('rtt-stats').innerHTML = statsHtml;
+}
+
+function displayDeviceResults(data) {
+    document.getElementById('device-results').style.display = 'block';
+
+    const tbody = document.getElementById('devices-body');
+    tbody.innerHTML = data.devices.map(device => `
+        <tr>
+            <td>Device ${device.id}</td>
+            <td>${device.type}</td>
+            <td>${device.os}</td>
+            <td>
+                <span class="status ${device.status}">
+                    ${device.status.toUpperCase()}
+                </span>
+            </td>
+            <td>${new Date(device.lastSeen).toLocaleTimeString()}</td>
+        </tr>
+    `).join('');
+}
+
+function displayMonitorResults(data) {
+    document.getElementById('monitor-results').style.display = 'block';
+
+    // Timeline
+    const timeline = document.getElementById('timeline');
+    timeline.innerHTML = data.monitoring.monitoring.slice(0, 10).map((event, idx) => `
+        <div class="timeline-event">
+            <time>${new Date(event.timestamp).toLocaleTimeString()}</time>
+            <div class="devices">
+                ${event.devices.map(d => `
+                    <span class="device-badge ${d.status}">
+                        ${d.type}: ${d.status}
+                    </span>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayFingerprintResults(data) {
+    document.getElementById('fingerprint-results').style.display = 'block';
+
+    const fingerprint = data.fingerprint;
+    const ctx = document.getElementById('fingerprintChart').getContext('2d');
+    if (charts.fingerprint) charts.fingerprint.destroy();
+
+    charts.fingerprint = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(fingerprint),
+            datasets: [{
+                label: 'Mean RTT (ms)',
+                data: Object.values(fingerprint).map(v => v.mean),
+                backgroundColor: '#667eea'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: true } }
+        }
+    });
+
+    const html = Object.entries(fingerprint).map(([activity, stats]) => `
+        <div class="fingerprint-item">
+            <h4>${activity}</h4>
+            <p>Mean: ${stats.mean}ms | Samples: ${stats.samples}</p>
+            <p>Pattern: ${stats.pattern}</p>
+        </div>
+    `).join('');
+    document.getElementById('fingerprint-data').innerHTML = html;
+}
+
+function displayExhaustionResults(data) {
+    document.getElementById('exhaustion-results').style.display = 'block';
+
+    const metrics = data.metrics;
+    const html = `
+        <div class="impact-item critical">
+            <h4>📊 Data Generated</h4>
+            <p class="value">${metrics.dataGenerated} MB</p>
+            <p>(${(metrics.dataGenerated / 1024).toFixed(1)} GB)</p>
+        </div>
+        <div class="impact-item danger">
+            <h4>🔋 Battery Drain</h4>
+            <p class="value">${metrics.estimatedBatteryDrain}%</p>
+            <p>of total battery</p>
+        </div>
+        <div class="impact-item info">
+            <h4>📨 Messages Sent</h4>
+            <p class="value">${metrics.messagesQueued}</p>
+            <p>total messages</p>
+        </div>
+        <div class="impact-item success">
+            <h4>🔇 Victim Notifications</h4>
+            <p class="value">${metrics.notificationCount}</p>
+            <p>COMPLETELY SILENT!</p>
+        </div>
+    `;
+    document.getElementById('impact-grid').innerHTML = html;
+}
+
+// ==================== REPORT GENERATION ====================
+
+async function generateReport() {
+    try {
+        const response = await fetch(`${API_URL}/session/${currentSession}/report`);
+        const data = await response.json();
+
+        if (data.success) {
+            const report = data.report;
+            const html = `
+                <h3>Complete Attack Report</h3>
+                <p><strong>Session:</strong> ${report.sessionId.substring(0, 16)}...</p>
+                <p><strong>Target:</strong> ${report.targetNumber}</p>
+                <p><strong>Probes Sent:</strong> ${report.probeCount}</p>
+                
+                <h4>Detected Devices</h4>
+                <ul>
+                    ${report.devices.map(d => `<li>Device ${d.id}: ${d.type} (${d.os}) - ${d.status}</li>`).join('')}
+                </ul>
+
+                <h4>Threats Identified</h4>
+                <ul>
+                    ${Object.entries(report.threats).map(([threat, level]) => 
+                        `<li><strong>${threat}:</strong> ${level}</li>`
+                    ).join('')}
+                </ul>
+            `;
+            document.getElementById('report-content').innerHTML = html;
+            document.getElementById('report-content').style.display = 'block';
+        }
+    } catch (error) {
+        showMessage(`✗ Error: ${error.message}`, 'error');
+    }
+}
+
+// ==================== UTILITIES ====================
+
+// (Logging handled above)

@@ -1,0 +1,31 @@
+{
+  "name": "careless-whisper-demo",
+  "version": "1.0.0",
+  "description": "Interactive web tool demonstrating delivery receipt vulnerabilities in messaging apps",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "security",
+    "privacy",
+    "messaging",
+    "vulnerabilities"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "baileys": "^7.0.0-rc.9",
+    "chalk": "^5.6.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "p-retry": "^7.1.1",
+    "pino": "^10.1.0",
+    "qrcode-terminal": "^0.12.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

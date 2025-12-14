@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Careless Whisper - PoC Attack Simulator</title>
+    <link rel="stylesheet" href="poc-styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="interpretations.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🔓 Careless Whisper PoC</h1>
+            <p>WhatsApp Delivery Receipt Attack Simulator</p>
+            <p class="warning">⚠️ RESEARCH TOOL - AUTHORIZED USE ONLY</p>
+        </header>
+
+        <!-- Main Interface -->
+        <main class="main">
+            <!-- Session Management Panel -->
+            <div class="panel session-panel">
+                <h2>🔐 Session Management</h2>
+                
+                <div class="form-group">
+                    <button id="btn-create-session" class="btn btn-primary">
+                        Create Session
+                    </button>
+                    <button id="btn-authenticate" class="btn btn-secondary" disabled>
+                        Authenticate
+                    </button>
+                </div>
+
+                <div id="session-info" class="info-box" style="display: none;">
+                    <p><strong>Session ID:</strong> <code id="session-id"></code></p>
+                    <p><strong>Status:</strong> <span id="session-status">Not authenticated</span></p>
+                </div>
+
+                <div id="active-sessions" class="sessions-list">
+                    <h3>Active Sessions</h3>
+                    <div id="sessions-table" class="table"></div>
+                </div>
+            </div>
+
+            <!-- Target Configuration -->
+            <div class="panel target-panel">
+                <h2>🎯 Target Configuration</h2>
+                
+                <div class="form-group">
+                    <label for="target-number">Target WhatsApp Number</label>
+                    <input type="text" id="target-number" placeholder="+1234567890" disabled>
+                    <small>Format: +[country code][number]</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="attack-type">Select Attack</label>
+                    <select id="attack-type" disabled>
+                        <option value="probe">RTT Probing (Detect device state)</option>
+                        <option value="devices">Detect Devices (Multi-device tracking)</option>
+                        <option value="monitor">Monitor Devices (Online/offline status)</option>
+                        <option value="fingerprint">Fingerprint Behavior (Screen time, app usage)</option>
+                        <option value="exhaust">Resource Exhaustion (Battery/data drain)</option>
+                    </select>
+                </div>
+
+                <!-- Probe Parameters -->
+                <div id="probe-params" class="params-group" style="display: none;">
+                    <h4>Probe Settings</h4>
+                    <div class="param">
+                        <label>Frequency (ms)</label>
+                        <input type="range" id="probe-freq" min="50" max="5000" value="1000">
+                        <span id="freq-display">1000ms</span>
+                    </div>
+                    <div class="param">
+                        <label>Duration (seconds)</label>
+                        <input type="range" id="probe-duration" min="5" max="60" value="10">
+                        <span id="duration-display">10s</span>
+                    </div>
+                </div>
+
+                <!-- Monitor Parameters -->
+                <div id="monitor-params" class="params-group" style="display: none;">
+                    <h4>Monitoring Settings</h4>
+                    <div class="param">
+                        <label>Check Interval (ms)</label>
+                        <input type="range" id="monitor-interval" min="500" max="5000" value="2000">
+                        <span id="interval-display">2000ms</span>
+                    </div>
+                    <div class="param">
+                        <label>Duration (seconds)</label>
+                        <input type="range" id="monitor-duration" min="10" max="300" value="60">
+                        <span id="monitor-display">60s</span>
+                    </div>
+                </div>
+
+                <!-- Fingerprint Parameters -->
+                <div id="fingerprint-params" class="params-group" style="display: none;">
+                    <h4>Fingerprinting Settings</h4>
+                    <div class="param">
+                        <label>Sample Count</label>
+                        <input type="range" id="fingerprint-samples" min="50" max="500" value="100">
+                        <span id="samples-display">100 samples</span>
+                    </div>
+                </div>
+
+                <!-- Exhaustion Parameters -->
+                <div id="exhaust-params" class="params-group" style="display: none;">
+                    <h4>Exhaustion Attack Settings</h4>
+                    <div class="param">
+                        <label>Payload Size (KB)</label>
+                        <input type="range" id="payload-size" min="10" max="1000" value="1024">
+                        <span id="payload-display">1024 KB</span>
+                    </div>
+                    <div class="param">
+                        <label>Frequency (messages/sec)</label>
+                        <input type="range" id="exhaust-freq" min="1" max="100" value="50">
+                        <span id="exhaust-freq-display">50/sec</span>
+                    </div>
+                    <div class="param">
+                        <label>Duration (seconds)</label>
+                        <input type="range" id="exhaust-duration" min="60" max="3600" value="3600">
+                        <span id="exhaust-duration-display">3600s (1 hour)</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <button id="btn-launch-attack" class="btn btn-danger" disabled>
+                        🚀 LAUNCH ATTACK
+                    </button>
+                </div>
+            </div>
+
+            <!-- Real-Time Results -->
+            <div class="panel results-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2 style="margin: 0;">📊 Attack Results</h2>
+                    <button id="btn-clear-results" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+                        🗑️ Clear Results
+                    </button>
+                </div>
+                
+                <div class="info-box" style="background-color: #f0f8ff; border-left: 4px solid #2196F3; padding: 12px;">
+                    <strong>🔒 Silent Attack Mode Active:</strong> All probes are completely invisible to the target user. 
+                    No messages, notifications, or typing indicators appear in WhatsApp. Attacks use internal 
+                    presence APIs and read receipt mechanisms only.
+                </div>
+                
+                <div id="attack-status" class="status-box" style="display: none;">
+                    <div class="attack-status-container">
+                        <div class="status-header">
+                            <div class="spinner"></div>
+                            <div>
+                                <p><strong>⚡ Attack Running</strong></p>
+                                <p><span id="status-text">Initializing attack...</span></p>
+                            </div>
+                        </div>
+                        <div class="progress-container" style="margin-top: 1rem;">
+                            <div class="progress-bar-wrapper">
+                                <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;">
+                                    <span class="progress-percent">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p><strong>Attack ID:</strong> <code id="attack-id" style="font-size: 0.85rem;">—</code></p>
+                    </div>
+                </div>
+
+                <!-- RTT Chart -->
+                <div id="rtt-results" style="display: none;">
+                    <h3>RTT Analysis Results</h3>
+                    <div class="chart-container">
+                        <canvas id="rttChart"></canvas>
+                    </div>
+                    <div class="stats-grid" id="rtt-stats"></div>
+                </div>
+
+                <!-- Device Detection -->
+                <div id="device-results" style="display: none;">
+                    <h3>Detected Devices</h3>
+                    <table class="devices-table" id="devices-table">
+                        <thead>
+                            <tr>
+                                <th>Device ID</th>
+                                <th>Type</th>
+                                <th>OS</th>
+                                <th>Status</th>
+                                <th>Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="devices-body"></tbody>
+                    </table>
+                </div>
+
+                <!-- Device Monitoring -->
+                <div id="monitor-results" style="display: none;">
+                    <h3>Device Status Timeline</h3>
+                    <div class="chart-container">
+                        <canvas id="monitorChart"></canvas>
+                    </div>
+                    <div id="timeline" class="timeline"></div>
+                </div>
+
+                <!-- Behavior Fingerprint -->
+                <div id="fingerprint-results" style="display: none;">
+                    <h3>Behavioral Fingerprint</h3>
+                    <div class="chart-container">
+                        <canvas id="fingerprintChart"></canvas>
+                    </div>
+                    <div id="fingerprint-data" class="fingerprint-data"></div>
+                </div>
+
+                <!-- Resource Exhaustion -->
+                <div id="exhaustion-results" style="display: none;">
+                    <h3>Resource Exhaustion Analysis</h3>
+                    <div class="impact-grid" id="impact-grid"></div>
+                    <p class="warning-text">🔴 These attacks are completely SILENT - victim receives NO notifications</p>
+                </div>
+            </div>
+
+            <!-- Analysis Report -->
+            <div class="panel report-panel">
+                <h2>📋 Complete Analysis Report</h2>
+                <button id="btn-generate-report" class="btn btn-primary" disabled>
+                    Generate Report
+                </button>
+                <div id="report-content" style="display: none;"></div>
+            </div>
+
+            <!-- Log Viewer -->
+            <div class="panel log-panel">
+                <h2>📜 Attack Log Viewer</h2>
+                <div class="log-controls">
+                    <button id="btn-clear-logs" class="btn btn-secondary">Clear Logs</button>
+                    <button id="btn-toggle-logs" class="btn btn-secondary">Auto-Scroll: ON</button>
+                </div>
+                <div id="log-viewer" class="log-viewer">
+                    <div id="log-content" class="log-content">
+                        <div class="log-entry log-system">
+                            <span class="log-time">[00:00:00]</span>
+                            <span class="log-level">[SYSTEM]</span>
+                            <span class="log-text">Log viewer initialized. Ready for attack execution.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>🔬 PoC Based on arXiv:2411.11194 - For Authorized Security Research Only</p>
+            <p>⚠️ Unauthorized use is ILLEGAL. Use responsibly and ethically.</p>
+        </footer>
+    </div>
+
+    <script src="poc-app.js"></script>
+</body>
+</html>

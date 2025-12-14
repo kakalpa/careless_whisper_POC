@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Careless Whisper: Delivery Receipt Vulnerabilities Demo</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🔓 Careless Whisper</h1>
+                <p class="subtitle">Exploiting Silent Delivery Receipts in Messaging Apps</p>
+                <p class="paper-ref">Based on arXiv:2411.11194 - Gegenhuber et al.</p>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav-tabs">
+            <button class="nav-btn active" data-tab="overview">Overview</button>
+            <button class="nav-btn" data-tab="rtt-analysis">RTT Analysis</button>
+            <button class="nav-btn" data-tab="device-tracking">Device Tracking</button>
+            <button class="nav-btn" data-tab="fingerprinting">Fingerprinting</button>
+            <button class="nav-btn" data-tab="resource">Resource Exhaustion</button>
+            <button class="nav-btn" data-tab="scenarios">Real-World Scenarios</button>
+            <button class="nav-btn" data-tab="vulnerability">Vulnerability Assessment</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- Overview Tab -->
+            <section id="overview" class="tab-content active">
+                <div class="card">
+                    <h2>📋 Overview: The Vulnerability</h2>
+                    <div class="overview-grid">
+                        <div class="overview-item">
+                            <h3>🎯 Attack Vector</h3>
+                            <p>Delivery receipts can be exploited to covertly monitor messaging app users without their knowledge or consent.</p>
+                        </div>
+                        <div class="overview-item">
+                            <h3>🔐 Key Insight</h3>
+                            <p>Unlike read receipts, delivery receipts cannot be disabled. They leak timing side-channels revealing user behavior.</p>
+                        </div>
+                        <div class="overview-item">
+                            <h3>⚡ Silent Attacks</h3>
+                            <p>Using message reactions instead of normal messages allows attacks without triggering any notifications to victims.</p>
+                        </div>
+                        <div class="overview-item">
+                            <h3>🌍 Scale</h3>
+                            <p>3+ billion WhatsApp users affected. Any user can be targeted knowing only their phone number.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>🔍 Attack Types</h2>
+                    <div class="attack-types">
+                        <div class="attack-type">
+                            <h3>👥 Creepy Companion</h3>
+                            <p><strong>Requirement:</strong> Existing conversation history</p>
+                            <p><strong>Capabilities:</strong> React, edit, delete messages → generate receipts silently</p>
+                            <p><strong>Example:</strong> Ex-partner tracking their former relationship</p>
+                        </div>
+                        <div class="attack-type">
+                            <h3>👻 Spooky Stranger</h3>
+                            <p><strong>Requirement:</strong> Just a phone number</p>
+                            <p><strong>Capabilities:</strong> Reactions to non-existing messages still trigger receipts</p>
+                            <p><strong>Example:</strong> Employer monitoring employee device usage</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📊 Vulnerability Severity</h2>
+                    <div class="severity-grid">
+                        <div class="severity-item critical">
+                            <h3>WhatsApp</h3>
+                            <p>🔴 <strong>CRITICAL</strong></p>
+                            <p>No rate limiting, large payloads, amplification</p>
+                            <p>Risk Score: <span class="score">9.2/10</span></p>
+                        </div>
+                        <div class="severity-item high">
+                            <h3>Signal</h3>
+                            <p>🟡 <strong>HIGH</strong></p>
+                            <p>Rate limiting helps, but still vulnerable</p>
+                            <p>Risk Score: <span class="score">6.5/10</span></p>
+                        </div>
+                        <div class="severity-item low">
+                            <h3>Threema</h3>
+                            <p>🟢 <strong>LOW</strong></p>
+                            <p>Receipt aggregation, no self-reactions</p>
+                            <p>Risk Score: <span class="score">2.1/10</span></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RTT Analysis Tab -->
+            <section id="rtt-analysis" class="tab-content">
+                <div class="card">
+                    <h2>📈 Round-Trip Time (RTT) Analysis</h2>
+                    <p class="description">RTT reveals device state through network timing differences. Different activities cause distinct RTT patterns.</p>
+                    
+                    <div class="control-group">
+                        <label for="rtt-activity">Select Activity:</label>
+                        <select id="rtt-activity">
+                            <option value="screenOn">Screen ON (~1000ms)</option>
+                            <option value="screenOff">Screen OFF (~2000ms)</option>
+                            <option value="appActive">WhatsApp Active (~350ms)</option>
+                            <option value="appInactive">WhatsApp Inactive (~500ms)</option>
+                            <option value="webActive">Browser Tab Active (~50ms)</option>
+                            <option value="webInactive">Browser Tab Inactive (~3000ms)</option>
+                            <option value="phoneCall">Phone Call (~800ms)</option>
+                            <option value="sleeping">Deep Sleep (~2500ms)</option>
+                        </select>
+                        <button class="btn-primary" id="btn-rtt-analyze">Analyze RTT Pattern</button>
+                    </div>
+
+                    <div id="rtt-chart-container" class="chart-container">
+                        <canvas id="rttChart"></canvas>
+                    </div>
+
+                    <div id="rtt-stats" class="stats-grid" style="display: none;">
+                        <div class="stat">
+                            <span class="stat-label">Mean RTT</span>
+                            <span class="stat-value" id="stat-mean">—</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Std Dev</span>
+                            <span class="stat-value" id="stat-stddev">—</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Min RTT</span>
+                            <span class="stat-value" id="stat-min">—</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Max RTT</span>
+                            <span class="stat-value" id="stat-max">—</span>
+                        </div>
+                    </div>
+
+                    <div class="interpretation" style="display: none;" id="rtt-interpretation">
+                        <h4>💡 What Does This Tell Us?</h4>
+                        <p id="interpretation-text"></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Device Tracking Tab -->
+            <section id="device-tracking" class="tab-content">
+                <div class="card">
+                    <h2>📱 Device Tracking Over Time</h2>
+                    <p class="description">Monitor which devices are online and their activity patterns. This real-world scenario shows a complete tracking timeline.</p>
+                    
+                    <div class="control-group">
+                        <button class="btn-primary" id="btn-device-track">Simulate Real-World Tracking</button>
+                    </div>
+
+                    <div id="device-info" class="device-info">
+                        <h3>Target Devices</h3>
+                        <div id="device-list" class="device-list"></div>
+                    </div>
+
+                    <div id="tracking-chart-container" class="chart-container">
+                        <canvas id="trackingChart"></canvas>
+                    </div>
+
+                    <div id="tracking-timeline" class="timeline"></div>
+
+                    <div class="findings" id="tracking-findings" style="display: none;">
+                        <h3>🔎 Attack Findings</h3>
+                        <ul id="findings-list"></ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Fingerprinting Tab -->
+            <section id="fingerprinting" class="tab-content">
+                <div class="card">
+                    <h2>🔬 Behavior Fingerprinting</h2>
+                    <p class="description">Extract detailed device behavior patterns from RTT variations. OS differences create unique signatures.</p>
+                    
+                    <div class="control-group">
+                        <label for="device-select">Select Device:</label>
+                        <select id="device-select">
+                            <option value="iphone13Pro">iPhone 13 Pro (iOS)</option>
+                            <option value="iphone11">iPhone 11 (iOS)</option>
+                            <option value="samsungS23">Samsung Galaxy S23 (Android/Snapdragon)</option>
+                            <option value="samsungA54">Samsung Galaxy A54 (Android/Exynos)</option>
+                            <option value="xiaomiPoco">Xiaomi Poco M5s (Android/MediaTek)</option>
+                        </select>
+                        <button class="btn-primary" id="btn-fingerprint">Generate Fingerprint</button>
+                    </div>
+
+                    <div id="fingerprint-device-info" class="device-info" style="display: none;">
+                        <h3>Device Profile</h3>
+                        <div id="fingerprint-profile"></div>
+                    </div>
+
+                    <div id="fingerprint-chart-container" class="chart-container">
+                        <canvas id="fingerprintChart"></canvas>
+                    </div>
+
+                    <div id="os-signature" class="os-signature" style="display: none;">
+                        <h3>🔐 OS Signature</h3>
+                        <p id="os-signature-text"></p>
+                        <p class="description">This unique signature reveals the target's OS and enables refined attacks.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Resource Exhaustion Tab -->
+            <section id="resource" class="tab-content">
+                <div class="card">
+                    <h2>⚔️ Resource Exhaustion Attack Calculator</h2>
+                    <p class="description">Calculate the impact of continuous attack payloads on victim's data usage and battery.</p>
+                    
+                    <div class="control-group">
+                        <label for="payload-size">Payload Size (KB):</label>
+                        <input type="range" id="payload-size" min="10" max="1000" value="1000">
+                        <span id="payload-display">1000 KB</span>
+
+                        <label for="freq-input">Probe Frequency (per second):</label>
+                        <input type="range" id="freq-input" min="1" max="20" value="10" step="0.1">
+                        <span id="freq-display">10/sec</span>
+
+                        <label for="duration-input">Attack Duration (seconds):</label>
+                        <input type="range" id="duration-input" min="60" max="3600" value="3600" step="60">
+                        <span id="duration-display">1 hour</span>
+
+                        <label for="app-select">Target App:</label>
+                        <select id="app-select">
+                            <option value="whatsapp">WhatsApp (No rate limiting)</option>
+                            <option value="signal">Signal (With rate limiting)</option>
+                        </select>
+
+                        <button class="btn-primary" id="btn-calculate">Calculate Impact</button>
+                    </div>
+
+                    <div id="exhaustion-results" class="results" style="display: none;">
+                        <div class="results-grid">
+                            <div class="result-item critical">
+                                <h3>📊 Data Traffic</h3>
+                                <div class="metric">
+                                    <span class="value" id="traffic-per-hour">—</span>
+                                    <span class="unit">MB/hour</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="value" id="traffic-total">—</span>
+                                    <span class="unit">GB Total</span>
+                                </div>
+                            </div>
+
+                            <div class="result-item warning">
+                                <h3>🔋 Battery Drain</h3>
+                                <div class="metric">
+                                    <span class="value" id="battery-per-hour">—</span>
+                                    <span class="unit">% per hour</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="value" id="battery-time">—</span>
+                                    <span class="unit">hours to drain</span>
+                                </div>
+                            </div>
+
+                            <div class="result-item">
+                                <h3>🎯 Impact Level</h3>
+                                <div class="metric">
+                                    <span class="value" id="impact-level">—</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="value" id="notification-status">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="attack-scenarios">
+                        <h3>📌 Real-World Impact Examples</h3>
+                        <div class="scenario">
+                            <strong>Case 1: Continuous 1-hour attack</strong>
+                            <p>13.3 GB consumed | 14-18% battery drained | Cost: ~$10-40 depending on data plan</p>
+                        </div>
+                        <div class="scenario">
+                            <strong>Case 2: 24-hour campaign</strong>
+                            <p>319 GB consumed | Multiple phone battery drains | Potential data plan exceeded</p>
+                        </div>
+                        <div class="scenario">
+                            <strong>Case 3: Persistent background attack</strong>
+                            <p>Slow drain at low frequency | Victim doesn't detect the attack pattern</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Real-World Scenarios Tab -->
+            <section id="scenarios" class="tab-content">
+                <div class="card">
+                    <h2>🌍 Real-World Attack Scenarios</h2>
+                    <p class="description">Explore how these vulnerabilities could be exploited in realistic situations.</p>
+                    
+                    <div class="scenario-buttons">
+                        <button class="scenario-btn" data-scenario="workplace">
+                            <span class="icon">💼</span> Workplace Surveillance
+                        </button>
+                        <button class="scenario-btn" data-scenario="stalking">
+                            <span class="icon">👻</span> Stalking & Harassment
+                        </button>
+                        <button class="scenario-btn" data-scenario="dataTheft">
+                            <span class="icon">💔</span> Resource Exhaustion
+                        </button>
+                    </div>
+
+                    <div id="scenario-details" class="scenario-details" style="display: none;">
+                        <h3 id="scenario-title"></h3>
+                        <p id="scenario-description" class="description"></p>
+                        
+                        <div class="scenario-info">
+                            <div class="info-item">
+                                <strong>Attacker Profile:</strong>
+                                <p id="scenario-attacker"></p>
+                            </div>
+                            <div class="info-item">
+                                <strong>Target:</strong>
+                                <p id="scenario-target"></p>
+                            </div>
+                            <div class="info-item">
+                                <strong>Duration:</strong>
+                                <p id="scenario-duration"></p>
+                            </div>
+                        </div>
+
+                        <div class="findings">
+                            <h4>🔍 What the Attacker Can Discover</h4>
+                            <ul id="scenario-findings"></ul>
+                        </div>
+
+                        <div class="implications">
+                            <h4>⚖️ Legal/Ethical Implications</h4>
+                            <p id="scenario-implications"></p>
+                        </div>
+
+                        <div class="detection">
+                            <h4>🛡️ Detection Difficulty</h4>
+                            <p id="scenario-detection"></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vulnerability Assessment Tab -->
+            <section id="vulnerability" class="tab-content">
+                <div class="card">
+                    <h2>📋 Vulnerability Assessment Report</h2>
+                    <p class="description">Comprehensive security analysis of messaging applications against delivery receipt attacks.</p>
+                    
+                    <button class="btn-primary" id="btn-assessment">Generate Assessment</button>
+
+                    <div id="assessment-report" style="display: none;">
+                        <div class="vulnerability-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Application</th>
+                                        <th>Risk Level</th>
+                                        <th>Score</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vuln-table-body"></tbody>
+                            </table>
+                        </div>
+
+                        <div id="app-details" class="app-details"></div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>🔬 Educational Tool - Research Based on: arXiv:2411.11194</p>
+            <p>Authors: Gegenhuber, Günther, Maier, Judmayer, Holzbauer, Frenzel, Ullrich</p>
+            <p style="color: #ff6b6b; margin-top: 10px;">⚠️ For educational and authorized security testing purposes only</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

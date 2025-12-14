@@ -1,0 +1,11 @@
+node_modules/
+auth_info/
+server.log
+.env
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+node_modules
