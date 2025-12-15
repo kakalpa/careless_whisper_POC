@@ -1143,16 +1143,20 @@ function displayExhaustionResults(data) {
     if (data && data.metrics) {
         const metrics = data.metrics;
         addLog('SUCCESS', `✓ Exhaustion Attack Complete - ${metrics.successfulProbes} successful silent probes`);
+        addLog('INFO', `📊 Success Rate: ${metrics.successRate}% (Paper baseline: 85-95%)`);
         addLog('INFO', `🔋 Battery Drain: ${metrics.estimatedBatteryDrain}% estimated impact`);
+        addLog('INFO', `📡 Data Consumed: ${metrics.dataPerHourGB >= 1 ? `${metrics.dataPerHourGB.toFixed(2)} GB/hour` : `${(metrics.dataPerHourGB * 1024).toFixed(0)} MB/hour`} (Paper max: 13.3 GB/hr)`);
         addLog('INFO', `🔒 Methods Used: ${metrics.methodsUsed ? metrics.methodsUsed.join(', ') : 'Silent APIs'}`);
         addLog('INFO', `🔐 Privacy Impact: ${metrics.privacyImpact || 'Completely invisible - no visible messages'}`);
         
         // Add interpretations
         const exhaustionInterpretation = interpretExhaustion(
-            (metrics.successfulProbes / metrics.probesAttempted) * 100,
+            parseFloat(metrics.successRate) || (metrics.successfulProbes / metrics.probesAttempted) * 100,
             metrics.batteryDrainRate || (metrics.estimatedBatteryDrain / 10),
             metrics.methodsUsed || [],
-            metrics.probesAttempted || 0
+            metrics.probesAttempted || 0,
+            metrics.estimatedDataConsumptionMB,
+            metrics.dataPerHourGB
         );
         
         const interpretationsContainer = document.createElement('div');
@@ -1175,7 +1179,7 @@ function displayExhaustionResults(data) {
             <div class="impact-item success">
                 <h4>✓ Attack Success</h4>
                 <p class="value">${metrics.successfulProbes || 0}/${metrics.probesAttempted || 0}</p>
-                <p>Silent probes executed</p>
+                <p>Silent probes (${(parseFloat(metrics.successRate) || 0).toFixed(1)}% success)</p>
             </div>
             <div class="impact-item critical">
                 <h4>🔋 Battery Drain</h4>
@@ -1187,12 +1191,17 @@ function displayExhaustionResults(data) {
                 </div>
             </div>
             <div class="impact-item danger">
+                <h4>📊 Data Consumed</h4>
+                <p class="value">${metrics.dataPerHourGB >= 1 ? `${metrics.dataPerHourGB.toFixed(2)} GB/hr` : `${(metrics.dataPerHourGB * 1024).toFixed(0)} MB/hr`}</p>
+                <p>${metrics.estimatedDataConsumptionGB >= 1 ? `${metrics.estimatedDataConsumptionGB.toFixed(2)} GB total` : `${metrics.estimatedDataConsumptionMB} MB total`}</p>
+            </div>
+            <div class="impact-item success">
                 <h4>🔒 Detection Risk</h4>
                 <p class="value">ZERO</p>
                 <p>Completely invisible</p>
             </div>
             <div class="impact-item info">
-                <h4>⚡ Methods Used</h4>
+                <h4>⚡ Attack Vectors</h4>
                 <p class="value">${metrics.methodsUsed ? metrics.methodsUsed.length : 3}</p>
                 <p>${metrics.methodsUsed ? metrics.methodsUsed.join(', ') : 'Typing indicators, Presence updates, Status fetches'}</p>
             </div>

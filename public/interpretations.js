@@ -420,7 +420,7 @@ function interpretFingerprinting(peakHours, consistency, avgActivity, screenTime
  * Case Study: Multi-vector resource attack effectiveness
  * Paper findings: 14-18% battery per hour, 13.3 GB/hour at max frequency
  */
-function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAttempts) {
+function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAttempts, dataConsumptionMB, dataPerHourGB) {
     const insights = [];
     let riskLevel = 'HIGH';
     
@@ -479,26 +479,51 @@ function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAt
         }
     }
     
-    // Data consumption analysis (Paper: 13.3 GB/hr at max, ~50 MB at 50 probes/sec)
-    if (methodsUsed && methodsUsed.length > 0) {
-        const dataConsumption = methodsUsed.length * 0.05; // Approximate 50MB base per method
-        
+    // Data consumption analysis (Paper: 13.3 GB/hr at max, ~180 MB/hr at 50 probes/sec)
+    if (dataPerHourGB !== undefined && dataPerHourGB !== null) {
         insights.push({
-            metric: 'Attack Methods',
-            value: `${methodsUsed.length} methods: ${methodsUsed.join(', ')}`,
-            meaning: methodsUsed.length > 3 ?
-                '🚨 Multi-vector attack - Overwhelming target with multiple resource types' :
-                '⚠️ Combined attack - Difficult to defend against single mitigations',
-            evidence: `Case Study: Simultaneous ${methodsUsed.join(', ')} = comprehensive resource exhaustion (battery + data + CPU)`
+            metric: 'Data Consumption Rate',
+            value: dataPerHourGB >= 1 ? 
+                `${dataPerHourGB.toFixed(2)} GB/hour` : 
+                `${(dataPerHourGB * 1024).toFixed(0)} MB/hour`,
+            meaning: dataPerHourGB > 10 ?
+                '🚨 EXTREME: Near-maximum data generation (Paper max: 13.3 GB/hr) - Victim\'s data plan decimated' :
+                dataPerHourGB > 5 ?
+                '🔴 VERY HIGH: Severe data consumption - Multiple GB per hour' :
+                dataPerHourGB > 1 ?
+                '🟠 HIGH: Significant data usage - Over 1 GB/hour' :
+                dataPerHourGB > 0.180 ?
+                '🟡 MODERATE: Notable data usage - Above 180 MB/hr baseline' :
+                '✓ BASELINE: Within expected range (~180 MB/hr at 50 probes/sec)',
+            evidence: `Paper: 50 probes/sec = 180 MB/hr; 13.3 GB/hr maximum at extreme frequencies`
         });
         
+        // Add total data consumed if dataConsumptionMB is provided
+        if (dataConsumptionMB) {
+            const dataGB = dataConsumptionMB / 1024;
+            const costEstimate = dataGB * 7.5; // Average $7.50 per GB overage
+            insights.push({
+                metric: 'Total Data Generated',
+                value: dataGB >= 1 ? `${dataGB.toFixed(2)} GB` : `${dataConsumptionMB.toFixed(0)} MB`,
+                meaning: dataGB > 5 ?
+                    `💸 CRITICAL COST: Estimated $${costEstimate.toFixed(0)} in data overages - Financial DoS` :
+                    dataGB > 1 ?
+                    `💸 HIGH COST: ~$${costEstimate.toFixed(0)} in data charges` :
+                    `💸 Cost: ~$${costEstimate.toFixed(2)} impact`,
+                evidence: `Paper: Silent data consumption = invisible financial attack on victim`
+            });
+        }
+    }
+    
+    // Attack methods analysis
+    if (methodsUsed && methodsUsed.length > 0) {
         insights.push({
-            metric: 'Estimated Data Generated',
-            value: `~${dataConsumption.toFixed(1)} MB per attack cycle`,
+            metric: 'Attack Methods',
+            value: `${methodsUsed.length} vectors: ${methodsUsed.join(', ')}`,
             meaning: methodsUsed.length > 2 ?
-                `⚠️ Significant data consumption - ${(dataConsumption * 24).toFixed(0)} MB per day if continuous` :
-                `Manageable data footprint (${(dataConsumption * 24).toFixed(0)} MB/day)`,
-            evidence: `Paper: 50 probes/sec = 180 MB/hr baseline; multi-vector compounds this`
+                '🚨 Multi-vector attack - Overwhelming target with multiple simultaneous resource types' :
+                '⚠️ Combined attack - Harder to defend against single mitigations',
+            evidence: `Case Study: Simultaneous ${methodsUsed.join(' + ')} = comprehensive resource exhaustion (battery + data + CPU)`
         });
     }
     
