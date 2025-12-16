@@ -10,15 +10,15 @@ function interpretRTT(avgRtt, minRtt, maxRtt, jitter, measurements) {
     let riskLevel = 'LOW';
     let userStatus = 'Offline';
     let deviceState = 'Unknown';
-    
-    // CRITICAL: Paper thresholds for device states
-    // Web Tab ACTIVE: 50ms ± 10ms (CRITICAL)
-    // App ACTIVE: 350ms ± 50ms (HIGH) 
-    // Screen ON (idle): 1000ms ± 150ms (MEDIUM)
-    // App SUSPENDED: 500ms ± 100ms (MEDIUM)
-    // Screen OFF: 2000ms ± 300ms (LOW)
-    // Deep SLEEP: 2500ms ± 400ms (LOW/OFFLINE)
-    
+
+    // CRITICAL: Paper thresholds for device states (Aligned with arXiv:2411.11194)
+    // Web Tab ACTIVE: < 50ms (CRITICAL)
+    // App ACTIVE: 50-150ms (HIGH) 
+    // Screen ON (idle): 150-350ms (MEDIUM)
+    // App SUSPENDED: 350-600ms (MEDIUM)
+    // Screen OFF: 600-2000ms (LOW)
+    // Deep SLEEP: > 2000ms (LOW/OFFLINE)
+
     // Interpret average RTT with paper thresholds
     if (avgRtt < 50) {
         deviceState = 'Web Tab ACTIVE';
@@ -81,7 +81,7 @@ function interpretRTT(avgRtt, minRtt, maxRtt, jitter, measurements) {
         riskLevel = 'LOW';
         userStatus = 'OFFLINE or SLEEPING';
     }
-    
+
     // Interpret jitter (connection type) per paper
     if (jitter < 20) {
         insights.push({
@@ -112,14 +112,14 @@ function interpretRTT(avgRtt, minRtt, maxRtt, jitter, measurements) {
             evidence: 'Very high variance > 300ms = may be tunneling, VPN, or network problems'
         });
     }
-    
+
     // Pattern analysis for paper case studies
     if (measurements && measurements.length > 5) {
         const recentMeasurements = measurements.slice(-5);
         const recentAvg = recentMeasurements.reduce((sum, m) => sum + m.rtt, 0) / recentMeasurements.length;
         const oldAvg = measurements.slice(0, 5).reduce((sum, m) => sum + m.rtt, 0) / 5;
         const rttaligned = measurements.slice(-10).filter(m => m.rtt > 2000).length;
-        
+
         // Detect sleep schedule pattern (RTT > 2000ms sustained)
         if (rttaligned >= 7) {
             insights.push({
@@ -144,7 +144,7 @@ function interpretRTT(avgRtt, minRtt, maxRtt, jitter, measurements) {
             });
         }
     }
-    
+
     return { insights, riskLevel, userStatus, deviceState };
 }
 
@@ -155,37 +155,49 @@ function interpretRTT(avgRtt, minRtt, maxRtt, jitter, measurements) {
 function interpretDeviceDetection(devices, targetNumber) {
     const insights = [];
     let riskLevel = 'MEDIUM';
-    
+
     const primaryDevice = devices && devices.length > 0 ? devices[0] : null;
-    
+
     if (primaryDevice) {
         const isIos = primaryDevice.os === 'iOS';
         const isAndroid = primaryDevice.os === 'Android';
         const osVersion = primaryDevice.osVersion || 'Unknown';
-        
+
         insights.push({
             metric: 'Primary Device OS',
             value: `${primaryDevice.os || 'Unknown'} ${osVersion}`,
-            meaning: isIos ? 
+            meaning: isIos ?
                 '🍎 iOS user - ecosystem suggests higher privacy awareness' :
                 isAndroid ?
-                '🤖 Android user - open ecosystem, device varies by manufacturer' :
-                '? Operating system unknown',
+                    '🤖 Android user - open ecosystem, device varies by manufacturer' :
+                    '? Operating system unknown',
             evidence: `Detected ${devices.length} device${devices.length !== 1 ? 's' : ''} associated with target - Primary uses ${primaryDevice.os || 'Unknown'}`
         });
-        
+
         if (primaryDevice.receiptPattern && primaryDevice.receiptPattern !== 'none') {
             insights.push({
                 metric: 'Receipt Pattern',
-                value: primaryDevice.receiptPattern === 'stacked' ? 'Stacked' : 'Separate',
+                value: primaryDevice.receiptPattern === 'stacked' ? 'Stacked' :
+                    primaryDevice.receiptPattern === 'stacked_reversed' ? 'Stacked (Reversed)' : 'Separate',
                 meaning: primaryDevice.receiptPattern === 'stacked' ?
-                    '📦 iOS pattern - all receipts grouped together' :
-                    '📨 Android pattern - individual receipt messages',
-                evidence: `Receipt ordering reveals OS type via WhatsApp protocol behavior`
+                    '📦 Desktop/Web pattern - all receipts grouped together' :
+                    primaryDevice.receiptPattern === 'stacked_reversed' ?
+                        '🍎 macOS Desktop pattern - receipts grouped in reverse order' :
+                        '📱 Mobile pattern - individual receipt messages',
+                evidence: `Receipt ordering reveals device class (Mobile vs Desktop) and specific OS versions`
             });
+
+            if (primaryDevice.receiptPattern === 'stacked_reversed') {
+                insights.push({
+                    metric: 'OS Detection',
+                    value: 'macOS Detected',
+                    meaning: '🎯 High Consistency: "Stacked Reversed" pattern is unique to macOS clients',
+                    evidence: 'Table V: Only macOS clients reverse the order of stacked delivery receipts'
+                });
+            }
         }
     }
-    
+
     if (devices && devices.length > 1) {
         riskLevel = 'HIGH';
         insights.push({
@@ -195,7 +207,7 @@ function interpretDeviceDetection(devices, targetNumber) {
             evidence: 'Target synchronizes messages across multiple platforms (case study: business users)'
         });
     }
-    
+
     return { insights, riskLevel };
 }
 
@@ -207,17 +219,17 @@ function interpretDeviceDetection(devices, targetNumber) {
 function interpretDeviceMonitoring(onlineEvents, totalMonitorTime, onlinePercentage, batteryDrain) {
     const insights = [];
     let riskLevel = 'HIGH';
-    
+
     // Ensure onlinePercentage is a number
     const onlinePercentageNum = typeof onlinePercentage === 'string' ? parseFloat(onlinePercentage) : onlinePercentage || 0;
     const batteryDrainNum = batteryDrain || 0;
-    
+
     // PAPER THRESHOLDS from Case Studies:
     // > 80%: "Always Online" (workaholic pattern, CRITICAL privacy risk)
     // 50-80%: "Regular user" (typical active user, HIGH privacy risk)
     // 20-50%: "Occasional user" (casual usage, MEDIUM privacy risk)
     // < 20%: "Minimal usage" (rarely checks, LOW privacy risk)
-    
+
     if (onlinePercentageNum > 80) {
         insights.push({
             metric: 'Online Availability',
@@ -257,7 +269,7 @@ function interpretDeviceMonitoring(onlineEvents, totalMonitorTime, onlinePercent
         });
         riskLevel = 'LOW';
     }
-    
+
     // Battery Impact Analysis (Paper: 14-18% per hour baseline)
     if (batteryDrainNum > 18) {
         insights.push({
@@ -288,18 +300,18 @@ function interpretDeviceMonitoring(onlineEvents, totalMonitorTime, onlinePercent
             evidence: 'Paper: 1-2% = baseline noise, hard to distinguish from normal usage'
         });
     }
-    
+
     // Session analysis for sleep/work patterns
     let sessionCount = 0;
     let offlineGaps = [];
     let longestOfflineGap = 0;
     let wasOnline = false;
     let currentGapStart = 0;
-    
+
     if (onlineEvents && onlineEvents.length > 0) {
         for (let i = 0; i < onlineEvents.length; i++) {
             const event = onlineEvents[i];
-            
+
             if (!event.online && wasOnline) {
                 // Offline gap started
                 currentGapStart = i;
@@ -313,17 +325,17 @@ function interpretDeviceMonitoring(onlineEvents, totalMonitorTime, onlinePercent
             } else if (event.online && !wasOnline) {
                 sessionCount++;
             }
-            
+
             wasOnline = event.online;
         }
-        
+
         insights.push({
             metric: 'Session Count',
             value: `${sessionCount} check-ins`,
             meaning: `User accessed WhatsApp ${sessionCount} distinct times during monitoring window`,
             evidence: 'Multiple sessions indicate episodic checking behavior vs constant monitoring'
         });
-        
+
         // Detect sustained offline periods (likely sleep)
         if (longestOfflineGap > 20) {
             insights.push({
@@ -334,12 +346,12 @@ function interpretDeviceMonitoring(onlineEvents, totalMonitorTime, onlinePercent
             });
         }
     }
-    
+
     // Time-window based analysis
     const hour = new Date().getHours();
     const dayOfWeek = new Date().getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    
+
     if (onlinePercentageNum > 70) {
         insights.push({
             metric: 'Likely Activity',
@@ -357,7 +369,7 @@ function interpretDeviceMonitoring(onlineEvents, totalMonitorTime, onlinePercent
             });
         }
     }
-    
+
     return { insights, riskLevel, sessionCount, longestOfflineGap };
 }
 
@@ -365,53 +377,65 @@ function interpretDeviceMonitoring(onlineEvents, totalMonitorTime, onlinePercent
  * Behavioral Fingerprinting Interpretation - Keystroke/interaction patterns
  * Case Study: Behavioral biometrics reveal unique user signatures
  */
-function interpretFingerprinting(peakHours, consistency, avgActivity, screenTime, appSwitchFreq) {
+/**
+ * Behavioral Fingerprinting Interpretation - Screen State & Activity Patterns
+ * Case Study: RTT analysis reveals Screen On/Off and App Foreground states
+ */
+function interpretFingerprinting(peakHours, consistency, avgActivity, screenTime, appSwitchFreq, activityStates) {
     const insights = [];
     let riskLevel = 'CRITICAL'; // Behavioral fingerprinting is highly privacy invasive
-    
+
     insights.push({
         metric: 'Behavior Pattern',
         value: `${consistency}% consistent`,
         meaning: `🎯 ${consistency > 70 ? 'Very predictable behavior' : 'Moderately variable behavior'}`,
         evidence: `User exhibits ${consistency}% consistency in interaction patterns (Case Study: Users average 65-85% consistency)`
     });
-    
+
     insights.push({
         metric: 'Peak Activity',
         value: peakHours || 'N/A',
         meaning: '⏰ User tends to be most active during these hours',
         evidence: 'Behavioral fingerprinting reveals daily routine (can identify when person is home, at work, sleeping)'
     });
-    
-    if (screenTime) {
+
+    // Calculate Screen Time from valid activity states (not fake app usage)
+    if (activityStates && activityStates.length > 0) {
+        let foregroundCount = 0;
+        let screenOnCount = 0;
+        let totalSamples = activityStates.length;
+
+        activityStates.forEach(sample => {
+            if (sample.state === 'App Foreground') foregroundCount++;
+            if (sample.state === 'Screen On (Background)') screenOnCount++;
+        });
+
+        const estimatedDailyScreenTime = ((foregroundCount + screenOnCount) / totalSamples * 12).toFixed(1); // Rough projection for 12h day
+
         insights.push({
-            metric: 'Daily Screen Time',
-            value: `${screenTime} hours`,
-            meaning: screenTime > 6 ?
-                '📱 Heavy device user - addiction indicators present' :
+            metric: 'Projected Screen Time',
+            value: `${estimatedDailyScreenTime} hours/day`,
+            meaning: estimatedDailyScreenTime > 6 ?
+                '📱 Heavy device user - extended active periods' :
                 '✓ Moderate device usage',
-            evidence: `Estimated from activity patterns - Case Study data shows ${screenTime}h average for monitored users`
+            evidence: `RTT Analysis distinguishes Screen On vs Off states (Figure 4 in paper)`
         });
-    }
-    
-    if (appSwitchFreq) {
+
         insights.push({
-            metric: 'Context Switching',
-            value: `${appSwitchFreq}x per hour`,
-            meaning: appSwitchFreq > 30 ?
-                '🔄 Very distracted - multitasking heavily (likely work context)' :
-                '✓ Focused - using device intentionally',
-            evidence: 'App switching frequency indicates cognitive load and context (multitasking = work/stress)'
+            metric: 'Screen State Analysis',
+            value: `${Math.round((foregroundCount / totalSamples) * 100)}% Foreground / ${Math.round((screenOnCount / totalSamples) * 100)}% Background`,
+            meaning: '🔍 Reveals how often user has phone unlocked vs actively using this specific app',
+            evidence: 'Detailed RTT timing (~300ms vs ~1000ms) reveals specific application focus state'
         });
     }
-    
+
     insights.push({
         metric: '⚠️ Privacy Risk',
         value: 'CRITICAL',
         meaning: 'This fingerprint can uniquely identify the user even without their phone number',
         evidence: 'Case Study: Behavioral biometrics remain stable across device changes (biometric-level privacy loss)'
     });
-    
+
     return { insights, riskLevel };
 }
 
@@ -423,35 +447,35 @@ function interpretFingerprinting(peakHours, consistency, avgActivity, screenTime
 function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAttempts, dataConsumptionMB, dataPerHourGB) {
     const insights = [];
     let riskLevel = 'HIGH';
-    
+
     // PAPER THRESHOLDS:
     // > 90%: Attack highly effective - device overwhelmed
     // 70-90%: Attack partially effective
     // < 70%: Limited effectiveness - robust device
-    
+
     insights.push({
         metric: 'Attack Success Rate',
         value: `${successRate.toFixed(1)}%`,
         meaning: successRate > 90 ?
             '🔴 CRITICAL: Extremely effective - Device completely overwhelmed' :
             successRate > 70 ?
-            '🟠 HIGH: Attack working well - Resource exhaustion detected' :
-            successRate > 50 ?
-            '🟡 MEDIUM: Partially effective - Some resistance detected' :
-            '🟢 LOW: Limited effectiveness - Device has robust rate limiting',
+                '🟠 HIGH: Attack working well - Resource exhaustion detected' :
+                successRate > 50 ?
+                    '🟡 MEDIUM: Partially effective - Some resistance detected' :
+                    '🟢 LOW: Limited effectiveness - Device has robust rate limiting',
         evidence: `Successfully exhausted resources ${successRate.toFixed(1)}% of attempts (Paper: 85-95% typical for WhatsApp)`
     });
-    
+
     // Battery drain interpretation (Paper: 1-18% per minute depending on attack intensity)
     if (batteryDrainRate) {
         // Convert to percentage per hour for consistency
         const batteryPerHour = batteryDrainRate * 60;
-        
+
         if (batteryDrainRate > 5) {
             insights.push({
                 metric: 'Battery Drain',
                 value: `${batteryDrainRate.toFixed(2)}% per minute (${batteryPerHour.toFixed(1)}%/hr)`,
-                meaning: `🔋 CRITICAL: Severe drain - Device battery depletes in ~${Math.round(100/batteryDrainRate)} minutes`,
+                meaning: `🔋 CRITICAL: Severe drain - Device battery depletes in ~${Math.round(100 / batteryDrainRate)} minutes`,
                 evidence: `Paper: >5%/min = multi-method attack (20-min depletion = complete DoS scenario)`
             });
             riskLevel = 'CRITICAL';
@@ -459,7 +483,7 @@ function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAt
             insights.push({
                 metric: 'Battery Drain',
                 value: `${batteryDrainRate.toFixed(2)}% per minute (${batteryPerHour.toFixed(1)}%/hr)`,
-                meaning: `⚠️ HIGH: Moderate drain - Device battery depletes in ~${Math.round(100/batteryDrainRate)} minutes`,
+                meaning: `⚠️ HIGH: Moderate drain - Device battery depletes in ~${Math.round(100 / batteryDrainRate)} minutes`,
                 evidence: `Paper: 2-5%/min = moderate attack (20-50 min depletion window)`
             });
         } else if (batteryDrainRate > 1) {
@@ -478,26 +502,26 @@ function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAt
             });
         }
     }
-    
+
     // Data consumption analysis (Paper: 13.3 GB/hr at max, ~180 MB/hr at 50 probes/sec)
     if (dataPerHourGB !== undefined && dataPerHourGB !== null) {
         insights.push({
             metric: 'Data Consumption Rate',
-            value: dataPerHourGB >= 1 ? 
-                `${dataPerHourGB.toFixed(2)} GB/hour` : 
+            value: dataPerHourGB >= 1 ?
+                `${dataPerHourGB.toFixed(2)} GB/hour` :
                 `${(dataPerHourGB * 1024).toFixed(0)} MB/hour`,
             meaning: dataPerHourGB > 10 ?
                 '🚨 EXTREME: Near-maximum data generation (Paper max: 13.3 GB/hr) - Victim\'s data plan decimated' :
                 dataPerHourGB > 5 ?
-                '🔴 VERY HIGH: Severe data consumption - Multiple GB per hour' :
-                dataPerHourGB > 1 ?
-                '🟠 HIGH: Significant data usage - Over 1 GB/hour' :
-                dataPerHourGB > 0.180 ?
-                '🟡 MODERATE: Notable data usage - Above 180 MB/hr baseline' :
-                '✓ BASELINE: Within expected range (~180 MB/hr at 50 probes/sec)',
+                    '🔴 VERY HIGH: Severe data consumption - Multiple GB per hour' :
+                    dataPerHourGB > 1 ?
+                        '🟠 HIGH: Significant data usage - Over 1 GB/hour' :
+                        dataPerHourGB > 0.180 ?
+                            '🟡 MODERATE: Notable data usage - Above 180 MB/hr baseline' :
+                            '✓ BASELINE: Within expected range (~180 MB/hr at 50 probes/sec)',
             evidence: `Paper: 50 probes/sec = 180 MB/hr; 13.3 GB/hr maximum at extreme frequencies`
         });
-        
+
         // Add total data consumed if dataConsumptionMB is provided
         if (dataConsumptionMB) {
             const dataGB = dataConsumptionMB / 1024;
@@ -508,13 +532,13 @@ function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAt
                 meaning: dataGB > 5 ?
                     `💸 CRITICAL COST: Estimated $${costEstimate.toFixed(0)} in data overages - Financial DoS` :
                     dataGB > 1 ?
-                    `💸 HIGH COST: ~$${costEstimate.toFixed(0)} in data charges` :
-                    `💸 Cost: ~$${costEstimate.toFixed(2)} impact`,
+                        `💸 HIGH COST: ~$${costEstimate.toFixed(0)} in data charges` :
+                        `💸 Cost: ~$${costEstimate.toFixed(2)} impact`,
                 evidence: `Paper: Silent data consumption = invisible financial attack on victim`
             });
         }
     }
-    
+
     // Attack methods analysis
     if (methodsUsed && methodsUsed.length > 0) {
         insights.push({
@@ -526,7 +550,7 @@ function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAt
             evidence: `Case Study: Simultaneous ${methodsUsed.join(' + ')} = comprehensive resource exhaustion (battery + data + CPU)`
         });
     }
-    
+
     // Overall attack assessment
     if (successRate > 80 && batteryDrainRate > 2) {
         insights.push({
@@ -537,7 +561,7 @@ function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAt
         });
         riskLevel = 'CRITICAL';
     }
-    
+
     return { insights, riskLevel };
 }
 
@@ -547,7 +571,7 @@ function interpretExhaustion(successRate, batteryDrainRate, methodsUsed, totalAt
 function assessOverallRisk(riskLevels) {
     const riskScale = { 'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4 };
     const avgRisk = riskLevels.reduce((sum, r) => sum + (riskScale[r] || 0), 0) / riskLevels.length;
-    
+
     if (avgRisk >= 3.5) return { level: 'CRITICAL', color: '#d32f2f', emoji: '🚨' };
     if (avgRisk >= 2.5) return { level: 'HIGH', color: '#f57c00', emoji: '⚠️' };
     if (avgRisk >= 1.5) return { level: 'MEDIUM', color: '#fbc02d', emoji: '⚡' };

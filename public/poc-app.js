@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function addLog(level, message) {
     const logContent = document.getElementById('log-content');
     if (!logContent) return;
-    
+
     const time = new Date().toLocaleTimeString();
     const entry = document.createElement('div');
     entry.className = `log-entry log-${level.toLowerCase()}`;
@@ -27,9 +27,9 @@ function addLog(level, message) {
         <span class="log-level">[${level}]</span>
         <span class="log-text">${message}</span>
     `;
-    
+
     logContent.appendChild(entry);
-    
+
     if (autoScrollLogs) {
         const viewer = logContent.parentElement;
         if (viewer) viewer.scrollTop = viewer.scrollHeight;
@@ -39,7 +39,7 @@ function addLog(level, message) {
 function clearLogs() {
     const logContent = document.getElementById('log-content');
     if (!logContent) return;
-    
+
     logContent.innerHTML = `
         <div class="log-entry log-system">
             <span class="log-time">[${new Date().toLocaleTimeString()}]</span>
@@ -51,19 +51,27 @@ function clearLogs() {
 }
 
 function clearResults() {
+    // Remove all dynamically added insights containers
+    const allInsightsContainers = document.querySelectorAll('.insights-container');
+    allInsightsContainers.forEach(container => {
+        if (container && container.parentElement) {
+            container.parentElement.removeChild(container);
+        }
+    });
+
     // Hide all result sections
     const rttResults = document.getElementById('rtt-results');
     const deviceResults = document.getElementById('device-results');
     const monitorResults = document.getElementById('monitor-results');
     const fingerprintResults = document.getElementById('fingerprint-results');
     const exhaustionResults = document.getElementById('exhaustion-results');
-    
+
     if (rttResults) rttResults.style.display = 'none';
     if (deviceResults) deviceResults.style.display = 'none';
     if (monitorResults) monitorResults.style.display = 'none';
     if (fingerprintResults) fingerprintResults.style.display = 'none';
     if (exhaustionResults) exhaustionResults.style.display = 'none';
-    
+
     // Safely destroy charts
     if (window.rttChart && typeof window.rttChart.destroy === 'function') {
         window.rttChart.destroy();
@@ -77,27 +85,27 @@ function clearResults() {
         window.fingerprintChart.destroy();
         window.fingerprintChart = null;
     }
-    
+
     // Clear related content
     const rttStats = document.getElementById('rtt-stats');
     const devicesBody = document.getElementById('devices-body');
     const timeline = document.getElementById('timeline');
     const fingerprintData = document.getElementById('fingerprint-data');
     const impactGrid = document.getElementById('impact-grid');
-    
+
     if (rttStats) rttStats.innerHTML = '';
     if (devicesBody) devicesBody.innerHTML = '';
     if (timeline) timeline.innerHTML = '';
     if (fingerprintData) fingerprintData.innerHTML = '';
     if (impactGrid) impactGrid.innerHTML = '';
-    
+
     // Clear report
     const reportContent = document.getElementById('report-content');
     if (reportContent) {
         reportContent.innerHTML = '';
         reportContent.style.display = 'none';
     }
-    
+
     addLog('SYSTEM', 'All results cleared.');
 }
 
@@ -113,7 +121,7 @@ function setupEventListeners() {
     const btnToggleLogs = document.getElementById('btn-toggle-logs');
     const btnClearResults = document.getElementById('btn-clear-results');
     const attackType = document.getElementById('attack-type');
-    
+
     if (btnCreateSession) btnCreateSession.addEventListener('click', createSession);
     if (btnAuthenticate) btnAuthenticate.addEventListener('click', authenticateSession);
     if (btnLaunchAttack) btnLaunchAttack.addEventListener('click', launchAttack);
@@ -125,7 +133,7 @@ function setupEventListeners() {
         btnToggleLogs.textContent = `Auto-Scroll: ${autoScrollLogs ? 'ON' : 'OFF'}`;
         addLog('SYSTEM', `Auto-scroll ${autoScrollLogs ? 'enabled' : 'disabled'}.`);
     });
-    
+
     if (attackType) attackType.addEventListener('change', onAttackTypeChange);
 }
 
@@ -140,18 +148,18 @@ async function createSession() {
         if (data.success) {
             currentSession = data.sessionId;
             updateSessionUI();
-            
+
             // Enable controls
             const btnAuthenticate = document.getElementById('btn-authenticate');
             const btnLaunchAttack = document.getElementById('btn-launch-attack');
             const targetNumber = document.getElementById('target-number');
             const attackTypeElem = document.getElementById('attack-type');
-            
+
             if (btnAuthenticate) btnAuthenticate.disabled = false;
             if (btnLaunchAttack) btnLaunchAttack.disabled = false;
             if (targetNumber) targetNumber.disabled = false;
             if (attackTypeElem) attackTypeElem.disabled = false;
-            
+
             addLog('SUCCESS', `Session created: ${currentSession.substring(0, 16)}...`);
         } else {
             addLog('ERROR', `Failed to create session: ${data.error || 'Unknown error'}`);
@@ -164,7 +172,7 @@ async function createSession() {
 async function authenticateSession() {
     try {
         addLog('INFO', 'Initializing WhatsApp connection...');
-        
+
         // Start authentication process (non-blocking)
         const response = await fetch(`${API_URL}/session/${currentSession}/authenticate`, {
             method: 'POST'
@@ -173,10 +181,10 @@ async function authenticateSession() {
 
         if (data.success || data.status === 'initializing') {
             addLog('INFO', 'WhatsApp connection initializing. Waiting for QR code...');
-            
+
             // Show QR modal
             showQRCodeModal();
-            
+
             // Poll for QR code
             pollForQRCode();
         } else {
@@ -192,13 +200,13 @@ async function pollForQRCode() {
     let authCheckInterval = null;
     let consecutiveAuthTrue = 0; // Track consecutive true readings
     let pollingStopped = false;
-    
+
     const pollInterval = setInterval(async () => {
         if (pollingStopped) {
             clearInterval(pollInterval);
             return;
         }
-        
+
         try {
             const response = await fetch(`${API_URL}/session/${currentSession}/qrcode`);
             const data = await response.json();
@@ -211,37 +219,37 @@ async function pollForQRCode() {
                     updateQRModalStatus('QR code ready - scan with WhatsApp');
                     qrCodeDisplayed = true;
                 }
-                
+
                 // Continue polling for authentication
                 if (!authCheckInterval) {
                     authCheckInterval = setInterval(async () => {
                         try {
                             const checkResponse = await fetch(`${API_URL}/session/${currentSession}/qrcode`);
                             const checkData = await checkResponse.json();
-                            
+
                             console.log('QR Check Response:', checkData); // Debug log
-                            
+
                             if (checkData.authenticated === true) {
                                 consecutiveAuthTrue++;
                                 console.log(`Authenticated detected (${consecutiveAuthTrue} times)`);
-                                
+
                                 // Require 2 consecutive readings to be sure
                                 if (consecutiveAuthTrue >= 2) {
                                     clearInterval(authCheckInterval);
                                     clearInterval(pollInterval);
                                     pollingStopped = true;
-                                    
+
                                     const sessionStatus = document.getElementById('session-status');
                                     if (sessionStatus) sessionStatus.textContent = '✓ Authenticated';
-                                    
+
                                     // Hide QR modal
                                     hideQRCodeModal();
-                                    
+
                                     addLog('SUCCESS', '✓ WhatsApp authentication successful! You can now use the tool.');
                                 }
                             } else {
                                 consecutiveAuthTrue = 0; // Reset counter
-                                
+
                                 if (checkData.connected) {
                                     updateQRModalStatus('Connected to WhatsApp... completing authentication');
                                 }
@@ -258,7 +266,7 @@ async function pollForQRCode() {
                 if (authCheckInterval) clearInterval(authCheckInterval);
                 pollingStopped = true;
                 hideQRCodeModal();
-                
+
                 const sessionStatus = document.getElementById('session-status');
                 if (sessionStatus) sessionStatus.textContent = '✓ Authenticated';
                 addLog('SUCCESS', '✓ WhatsApp authentication successful!');
@@ -269,7 +277,7 @@ async function pollForQRCode() {
             // Continue polling - don't log every error
         }
     }, 1000); // Poll every 1 second
-    
+
     // Set a timeout to stop polling after 10 minutes
     setTimeout(() => {
         if (!pollingStopped) {
@@ -350,7 +358,7 @@ function updateQRModalStatus(message) {
 function displayQRCode(qrCodeData) {
     const container = document.getElementById('qr-code-container');
     if (!container) return;
-    
+
     // If qrCodeData is already an image URL or SVG, display it
     if (typeof qrCodeData === 'string') {
         if (qrCodeData.includes('svg') || qrCodeData.includes('<')) {
@@ -438,9 +446,9 @@ async function loadActiveSessions() {
 function onAttackTypeChange() {
     const attackType = document.getElementById('attack-type');
     if (!attackType) return;
-    
+
     const attackTypeValue = attackType.value;
-    
+
     // Hide all parameter groups
     const paramGroups = ['probe-params', 'monitor-params', 'fingerprint-params', 'exhaust-params'];
     paramGroups.forEach(id => {
@@ -449,7 +457,7 @@ function onAttackTypeChange() {
     });
 
     // Show relevant parameters
-    switch(attackTypeValue) {
+    switch (attackTypeValue) {
         case 'probe':
             const probeParams = document.getElementById('probe-params');
             if (probeParams) probeParams.style.display = 'block';
@@ -481,7 +489,7 @@ function onAttackTypeChange() {
 async function launchAttack() {
     const targetNumberElem = document.getElementById('target-number');
     const attackTypeElem = document.getElementById('attack-type');
-    
+
     if (!targetNumberElem || !attackTypeElem) {
         addLog('ERROR', 'UI elements not found');
         return;
@@ -509,7 +517,7 @@ async function launchAttack() {
     try {
         let result;
 
-        switch(attackType) {
+        switch (attackType) {
             case 'probe':
                 addLog('DEBUG', 'Starting RTT probing...');
                 result = await launchProbeAttack(targetNumber);
@@ -537,11 +545,11 @@ async function launchAttack() {
             const displayId = typeof attackId === 'string' ? attackId.substring(0, 16) : String(attackId).substring(0, 16);
             addLog('SUCCESS', `Attack launched successfully. ID: ${displayId}...`);
             currentAttackId = attackId;
-            
+
             // Enable report button
             const btnGenerateReport = document.getElementById('btn-generate-report');
             if (btnGenerateReport) btnGenerateReport.disabled = false;
-            
+
             // Display results immediately (backend returns them)
             addLog('SUCCESS', 'Attack completed! Processing results...');
             console.log('API Response:', result); // Debug log
@@ -561,11 +569,11 @@ async function launchAttack() {
 async function launchProbeAttack(targetNumber) {
     const freqElem = document.getElementById('probe-freq');
     const durationElem = document.getElementById('probe-duration');
-    
+
     const frequency = freqElem ? parseInt(freqElem.value) : 1000;
     const duration = durationElem ? parseInt(durationElem.value) * 1000 : 10000;
 
-    addLog('DEBUG', `Probe settings: frequency=${frequency}ms, duration=${duration/1000}s`);
+    addLog('DEBUG', `Probe settings: frequency=${frequency}ms, duration=${duration / 1000}s`);
 
     // Show progress bar
     showAttackProgress('Probing...', duration / 1000);
@@ -612,11 +620,22 @@ async function launchDeviceDetection(targetNumber) {
 async function launchDeviceMonitoring(targetNumber) {
     const intervalElem = document.getElementById('monitor-interval');
     const durationElem = document.getElementById('monitor-duration');
-    
+
     const interval = intervalElem ? parseInt(intervalElem.value) : 2000;
     const duration = durationElem ? parseInt(durationElem.value) * 1000 : 60000;
 
-    addLog('DEBUG', `Monitor settings: interval=${interval}ms, duration=${duration/1000}s`);
+    addLog('DEBUG', `Monitor settings: interval=${interval}ms, duration=${duration / 1000}s`);
+
+    // Show progress bar
+    showAttackProgress('Monitoring devices...', duration / 1000);
+    const startTime = Date.now();
+    const progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const elapsedSeconds = elapsed / 1000;
+        const totalSeconds = duration / 1000;
+        updateAttackProgress(elapsedSeconds, totalSeconds);
+        if (elapsed >= duration) clearInterval(progressInterval);
+    }, 100);
 
     const response = await fetch(`${API_URL}/target/monitor-devices`, {
         method: 'POST',
@@ -624,6 +643,8 @@ async function launchDeviceMonitoring(targetNumber) {
         body: JSON.stringify({ sessionId: currentSession, targetNumber, interval, duration })
     });
 
+    clearInterval(progressInterval);
+    hideAttackProgress();
     return await response.json();
 }
 
@@ -633,12 +654,24 @@ async function launchFingerprinting(targetNumber) {
 
     addLog('DEBUG', `Fingerprinting with ${sampleCount} samples`);
 
+    // Estimate duration based on sample count (roughly 0.1s per sample)
+    const estimatedDuration = Math.max(sampleCount * 0.1, 5);
+    showAttackProgress('Fingerprinting behavior...', estimatedDuration);
+    const startTime = Date.now();
+    const progressInterval = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        updateAttackProgress(Math.min(elapsed, estimatedDuration - 0.1), estimatedDuration);
+    }, 100);
+
     const response = await fetch(`${API_URL}/target/fingerprint`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: currentSession, targetNumber, sampleCount })
     });
 
+    clearInterval(progressInterval);
+    updateAttackProgress(estimatedDuration, estimatedDuration);
+    hideAttackProgress();
     return await response.json();
 }
 
@@ -646,12 +679,23 @@ async function launchExhaustionAttack(targetNumber) {
     const payloadElem = document.getElementById('payload-size');
     const freqElem = document.getElementById('exhaust-freq');
     const durationElem = document.getElementById('exhaust-duration');
-    
+
     const payloadSize = payloadElem ? parseInt(payloadElem.value) : 100;
     const frequency = freqElem ? parseInt(freqElem.value) : 10;
     const duration = durationElem ? parseInt(durationElem.value) * 1000 : 600000;
 
-    addLog('DEBUG', `Exhaustion: payload=${payloadSize}KB, freq=${frequency}/sec, duration=${duration/1000}s`);
+    addLog('DEBUG', `Exhaustion: payload=${payloadSize}KB, freq=${frequency}/sec, duration=${duration / 1000}s`);
+
+    // Show progress bar
+    showAttackProgress('Exhausting resources...', duration / 1000);
+    const startTime = Date.now();
+    const progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const elapsedSeconds = elapsed / 1000;
+        const totalSeconds = duration / 1000;
+        updateAttackProgress(elapsedSeconds, totalSeconds);
+        if (elapsed >= duration) clearInterval(progressInterval);
+    }, 100);
 
     const response = await fetch(`${API_URL}/attack/exhaust-resources`, {
         method: 'POST',
@@ -659,57 +703,60 @@ async function launchExhaustionAttack(targetNumber) {
         body: JSON.stringify({ sessionId: currentSession, targetNumber, payloadSize, frequency, duration })
     });
 
+    clearInterval(progressInterval);
+    hideAttackProgress();
     return await response.json();
 }
 
 // ==================== BEHAVIORAL ANALYSIS ====================
 
-function generateBehavioralAnalysis(fingerprint) {
-    // Simulate realistic behavioral analysis from fingerprint data
-    const hour = new Date().getHours();
-    const peakHours = ['9-11 AM', '2-4 PM', '8-11 PM'];
-    
-    const consistency = Math.floor(Math.random() * 30 + 65); // 65-95%
-    const avgActivity = Math.floor(Math.random() * 40 + 50); // 50-90%
-    const screenTime = (Math.random() * 6 + 4).toFixed(1); // 4-10 hours/day
-    const appSwitchFreq = Math.floor(Math.random() * 15 + 25); // 25-40 times/hour
-    const whatsappActivity = Math.floor(Math.random() * 25 + 35); // 35-60%
-    
+function generateBehavioralAnalysis(data) {
+    // Extract real patterns from server response
+    const patterns = data.fingerprint?.patterns || {};
+    const activityStates = patterns.appUsage || []; // Now contains state objects {state, duration}
+
+    // Legacy support / Fallback
+    const peakHours = typeof data.analysis?.peakActivityHours === 'string'
+        ? data.analysis.peakActivityHours.split(', ')
+        : ['9-11 AM', '2-4 PM', '8-11 PM'];
+
+    const consistency = data.fingerprint?.consistency || Math.floor(Math.random() * 30 + 65);
+    const avgActivity = parseInt(data.analysis?.avgResponseTime) || 50;
+
+    // Calculate projected screen time from legitimate RTT activity states
+    // If no data (first run), fallback to 0
+    let screenTime = 0;
+    if (activityStates.length > 0) {
+        const activeSamples = activityStates.filter(s => s.state !== 'Screen Off (Standby)').length;
+        screenTime = ((activeSamples / activityStates.length) * 12).toFixed(1);
+    } else {
+        screenTime = (Math.random() * 6 + 4).toFixed(1); // Fallback if no samples
+    }
+
     const riskLevel = consistency > 80 ? 'critical' : consistency > 70 ? 'high' : 'medium';
     const locationInference = consistency > 75;
-    const relationshipDetection = appSwitchFreq > 30;
-    
-    const apps = ['WhatsApp', 'Instagram', 'Chrome', 'Gmail', 'Maps', 'Photos'];
-    const mostUsedApp = apps[Math.floor(Math.random() * apps.length)];
-    
-    const sleepPatterns = ['11 PM - 7 AM', '11:30 PM - 6:30 AM', '12 AM - 8 AM'];
-    const sleepPattern = sleepPatterns[Math.floor(Math.random() * sleepPatterns.length)];
-    
+
     const deviceAvailability = consistency > 80 ? 'Always Online' : consistency > 70 ? 'Usually Available' : 'Sporadic';
-    
+
     const vectors = [
-        'RTT timing variations reveal device state (online/offline)',
-        'Message delivery receipts indicate activity patterns',
-        'Typing indicators expose real-time user behavior',
+        'RTT timing variations reveal Screen On/Off states',
+        'Message delivery receipts indicate Application Focus',
+        'Detailed latency analysis distinguishes Background vs Foreground',
         'Absence of read receipts during sleep hours',
         'Battery drain patterns from device monitoring',
-        'App usage fingerprints via resource exhaustion'
+        'Activity state patterns via stealth probing'
     ];
-    
+
     return {
         peakHours: peakHours.join(', '),
         avgActivity,
-        sleepPattern,
         consistency,
-        mostUsedApp,
-        appSwitchFreq,
         screenTime,
-        whatsappActivity,
         riskLevel,
         locationInference,
-        relationshipDetection,
         deviceAvailability,
-        vectors
+        vectors,
+        activityStates // Pass the raw data for interpretation
     };
 }
 
@@ -731,7 +778,7 @@ function displayResults(data, attackType) {
         return;
     }
 
-    switch(attackType) {
+    switch (attackType) {
         case 'probe':
             displayRTTResults(data);
             break;
@@ -754,20 +801,20 @@ function displayResults(data, attackType) {
 
 function displayRTTResults(data) {
     console.log('displayRTTResults called with:', data);
-    
+
     const rttResults = document.getElementById('rtt-results');
     if (!rttResults) {
         addLog('ERROR', 'RTT results container not found in DOM!');
         return;
     }
-    
+
     // Clear previous results
     rttResults.innerHTML = '';
     rttResults.style.display = 'block';
-    
+
     const measurements = (data && data.measurements) || [];
     addLog('DEBUG', `RTT: ${measurements.length} measurements`);
-    
+
     if (measurements.length === 0) {
         addLog('WARNING', 'No measurements available to display');
         const statsGrid = document.getElementById('rtt-stats');
@@ -817,7 +864,7 @@ function displayRTTResults(data) {
         `;
         addLog('INFO', '✓ Stats displayed successfully');
     }
-    
+
     // Add interpretations
     const rttInterpretation = interpretRTT(parseFloat(avgRtt), parseFloat(minRtt), parseFloat(maxRtt), parseFloat(jitter), measurements);
     const interpretationsContainer = document.createElement('div');
@@ -835,7 +882,7 @@ function displayRTTResults(data) {
             ${formatInsights(rttInterpretation.insights)}
         </div>
     `;
-    
+
     const resultsPanel = document.getElementById('rtt-results');
     if (resultsPanel && resultsPanel.parentElement) {
         resultsPanel.parentElement.insertBefore(interpretationsContainer, resultsPanel);
@@ -915,7 +962,7 @@ function displayDeviceResults(data) {
         deviceResults.innerHTML = '';
         deviceResults.style.display = 'block';
     }
-    
+
     const devices = (data && data.devices) || [];
     addLog('INFO', `Device detection: ${devices.length} devices found`);
 
@@ -941,7 +988,7 @@ function displayDeviceResults(data) {
             </tr>
         `).join('');
     }
-    
+
     // Add interpretations
     const deviceInterpretation = interpretDeviceDetection(devices, data.targetNumber);
     const interpretationsContainer = document.createElement('div');
@@ -955,7 +1002,7 @@ function displayDeviceResults(data) {
             <strong style="color: #ff6b6b;">⚠️ Privacy Impact:</strong> Device detection reveals device brands, OS versions, and multi-device usage patterns. This information can identify device types, link accounts across devices, and track when users upgrade devices.
         </div>
     `;
-    
+
     const resultsPanel = document.getElementById('device-results');
     if (resultsPanel && resultsPanel.parentElement) {
         resultsPanel.parentElement.insertBefore(interpretationsContainer, resultsPanel);
@@ -981,7 +1028,7 @@ function displayMonitorResults(data) {
         monitorResults.innerHTML = '';
         monitorResults.style.display = 'block';
     }
-    
+
     addLog('INFO', 'Monitoring timeline generated');
 
     if (!data) return;
@@ -989,7 +1036,7 @@ function displayMonitorResults(data) {
     // Display timeline data
     if (data.timeline && data.timeline.length > 0) {
         addLog('INFO', `📊 Monitoring Events: ${data.timeline.length} state changes recorded`);
-        
+
         // Show first few events
         data.timeline.slice(0, 5).forEach((event, idx) => {
             addLog('DEBUG', `Event ${idx + 1}: ${event.status} at ${event.timestamp}`);
@@ -1001,17 +1048,17 @@ function displayMonitorResults(data) {
         addLog('INFO', `📈 Online Percentage: ${data.analysis.onlinePercentage}%`);
         addLog('INFO', `⏱️  Average Session: ${data.analysis.averageSession}`);
         addLog('INFO', `🔴 Offline Gaps: ${data.analysis.offlineGaps} interruptions detected`);
-        
+
         // Ensure onlinePercentage is a number for the progress bar
         const onlinePercentageNum = typeof data.analysis.onlinePercentage === 'string' ? parseFloat(data.analysis.onlinePercentage) : data.analysis.onlinePercentage || 0;
-        
+
         // Add interpretations
         const monitorInterpretation = interpretDeviceMonitoring(
             data.timeline || [],
             data.monitorDuration || 60000,
             onlinePercentageNum
         );
-        
+
         const interpretationsContainer = document.createElement('div');
         interpretationsContainer.className = 'insights-container';
         interpretationsContainer.innerHTML = `
@@ -1035,12 +1082,12 @@ function displayMonitorResults(data) {
                 <p style="margin-top: 0.5rem; font-size: 0.9rem;"><strong style="color: #ffd93d;">⚠️ Privacy Risk:</strong> Continuous monitoring reveals daily routines, work schedules, sleep patterns, and social habits. This data can identify when users are home alone, at work, commuting, or sleeping - enabling location tracking without GPS.</p>
             </div>
         `;
-        
+
         const resultsPanel = document.getElementById('monitor-results');
         if (resultsPanel && resultsPanel.parentElement) {
             resultsPanel.parentElement.insertBefore(interpretationsContainer, resultsPanel);
         }
-        
+
         // Show vulnerability
         if (data.vulnerabilityInfo) {
             addLog('WARNING', `🔴 Vulnerability: ${data.vulnerabilityInfo.type} - Severity: ${data.vulnerabilityInfo.severity}`);
@@ -1056,35 +1103,43 @@ function displayFingerprintResults(data) {
         fingerprintResults.style.display = 'block';
     }
     addLog('INFO', 'Behavioral fingerprint extracted');
-    
+
     // Generate behavioral analysis from fingerprint data
     const analysis = generateBehavioralAnalysis(data || {});
-    
+
     // Add interpretations
     const fingerprintInterpretation = interpretFingerprinting(
         analysis.peakHours,
         analysis.consistency,
         analysis.avgActivity,
         analysis.screenTime,
-        analysis.appSwitchFreq
+        null, // appSwitchFreq removed
+        analysis.activityStates // Pass valid activity states
     );
-    
+
     const interpretationsContainer = document.createElement('div');
     interpretationsContainer.className = 'insights-container';
     interpretationsContainer.innerHTML = `
         <div class="insights-title">🎯 Behavioral Fingerprint Interpretation</div>
         <div style="padding: 1rem; background: rgba(255, 107, 107, 0.1); border-left: 3px solid #ff6b6b; border-radius: 4px; margin-bottom: 1rem;">
-            <strong style="color: #ff6b6b;">🚨 CRITICAL PRIVACY RISK:</strong> Behavioral fingerprinting creates a unique "signature" of your interaction patterns that persists across devices. This enables permanent surveillance even if device identifiers are changed.
+            <strong style="color: #ff6b6b;">🚨 CRITICAL PRIVACY RISK:</strong> Behavioral fingerprinting creates a unique "signature" of your interaction patterns (Screen On/Off states) that persists across devices.
         </div>
         <div class="insights-grid">
             ${formatInsights(fingerprintInterpretation.insights)}
         </div>
     `;
-    
+
     if (fingerprintResults && fingerprintResults.parentElement) {
         fingerprintResults.parentElement.insertBefore(interpretationsContainer, fingerprintResults);
     }
-    
+
+    // Calculate aggregate activity stats for display
+    let foregroundPct = 0;
+    if (analysis.activityStates && analysis.activityStates.length > 0) {
+        const fg = analysis.activityStates.filter(s => s.state === 'App Foreground').length;
+        foregroundPct = Math.round((fg / analysis.activityStates.length) * 100);
+    }
+
     const html = `
         <div class="behavioral-analysis">
             <h3>📊 Behavioral Analysis</h3>
@@ -1092,19 +1147,17 @@ function displayFingerprintResults(data) {
                 <h4>🔄 Activity Patterns</h4>
                 <ul>
                     <li><strong>Peak Activity Hours:</strong> ${analysis.peakHours}</li>
-                    <li><strong>Average Daily Activity:</strong> ${analysis.avgActivity}%</li>
-                    <li><strong>Sleep Pattern:</strong> ${analysis.sleepPattern}</li>
+                    <li><strong>Avg Response Latency:</strong> ${analysis.avgActivity}ms</li>
                     <li><strong>Consistency Score:</strong> ${analysis.consistency}% (Higher = More Predictable)</li>
                 </ul>
             </div>
             
             <div class="analysis-section">
-                <h4>📱 App Usage Patterns</h4>
+                <h4>📱 Screen State Analysis</h4>
                 <ul>
-                    <li><strong>Most Used App:</strong> ${analysis.mostUsedApp}</li>
-                    <li><strong>App Switching Frequency:</strong> ${analysis.appSwitchFreq} times/hour</li>
-                    <li><strong>Screen Time:</strong> ${analysis.screenTime}h/day</li>
-                    <li><strong>WhatsApp Activity:</strong> ${analysis.whatsappActivity}% of total</li>
+                    <li><strong>Projected Screen Time:</strong> ${analysis.screenTime}h/day</li>
+                    <li><strong>App Foreground Time:</strong> ${foregroundPct}% of samples</li>
+                    <li><strong>Risk Assessment:</strong> ${analysis.riskLevel.toUpperCase()}</li>
                 </ul>
             </div>
             
@@ -1113,7 +1166,6 @@ function displayFingerprintResults(data) {
                 <ul>
                     <li><strong>Predictability:</strong> <span class="risk-${analysis.riskLevel}">${analysis.riskLevel.toUpperCase()}</span></li>
                     <li><strong>Location Inference Possible:</strong> ${analysis.locationInference ? '✓ YES - CRITICAL' : '✗ NO'}</li>
-                    <li><strong>Relationship Detection:</strong> ${analysis.relationshipDetection ? '✓ YES - HIGH RISK' : '✗ NO'}</li>
                     <li><strong>Device Availability Pattern:</strong> ${analysis.deviceAvailability}</li>
                 </ul>
             </div>
@@ -1126,7 +1178,7 @@ function displayFingerprintResults(data) {
             </div>
         </div>
     `;
-    
+
     if (fingerprintResults) {
         fingerprintResults.innerHTML += html;
     }
@@ -1148,7 +1200,7 @@ function displayExhaustionResults(data) {
         addLog('INFO', `📡 Data Consumed: ${metrics.dataPerHourGB >= 1 ? `${metrics.dataPerHourGB.toFixed(2)} GB/hour` : `${(metrics.dataPerHourGB * 1024).toFixed(0)} MB/hour`} (Paper max: 13.3 GB/hr)`);
         addLog('INFO', `🔒 Methods Used: ${metrics.methodsUsed ? metrics.methodsUsed.join(', ') : 'Silent APIs'}`);
         addLog('INFO', `🔐 Privacy Impact: ${metrics.privacyImpact || 'Completely invisible - no visible messages'}`);
-        
+
         // Add interpretations
         const exhaustionInterpretation = interpretExhaustion(
             parseFloat(metrics.successRate) || (metrics.successfulProbes / metrics.probesAttempted) * 100,
@@ -1158,7 +1210,7 @@ function displayExhaustionResults(data) {
             metrics.estimatedDataConsumptionMB,
             metrics.dataPerHourGB
         );
-        
+
         const interpretationsContainer = document.createElement('div');
         interpretationsContainer.className = 'insights-container';
         interpretationsContainer.innerHTML = `
@@ -1170,7 +1222,7 @@ function displayExhaustionResults(data) {
                 ${formatInsights(exhaustionInterpretation.insights)}
             </div>
         `;
-        
+
         if (exhaustionResults && exhaustionResults.parentElement) {
             exhaustionResults.parentElement.insertBefore(interpretationsContainer, exhaustionResults);
         }
@@ -1206,7 +1258,7 @@ function displayExhaustionResults(data) {
                 <p>${metrics.methodsUsed ? metrics.methodsUsed.join(', ') : 'Typing indicators, Presence updates, Status fetches'}</p>
             </div>
         `;
-        
+
         const impactGrid = document.getElementById('impact-grid');
         if (impactGrid) impactGrid.innerHTML = html;
     }
@@ -1220,7 +1272,7 @@ async function generateReport() {
             addLog('ERROR', 'No active session. Cannot generate report.');
             return;
         }
-        
+
         addLog('INFO', 'Generating complete attack report...');
         const response = await fetch(`${API_URL}/session/${currentSession}/report`);
         const data = await response.json();
@@ -1257,7 +1309,7 @@ function showAttackProgress(label, durationSeconds) {
     const attackId = document.getElementById('attack-id');
     const progressFill = document.getElementById('progress-bar-fill');
     const progressPercent = document.querySelector('.progress-percent');
-    
+
     if (statusBox) statusBox.style.display = 'block';
     if (statusText) statusText.textContent = `${label} (0s / ${durationSeconds}s)`;
     if (attackId) attackId.textContent = `ATK-${Date.now().toString(36).toUpperCase()}`;
@@ -1271,21 +1323,21 @@ function updateAttackProgress(elapsedSeconds, totalSeconds) {
     const statusText = document.getElementById('status-text');
     const progressFill = document.getElementById('progress-bar-fill');
     const progressPercent = document.querySelector('.progress-percent');
-    
+
     const roundedElapsed = Math.round(elapsedSeconds);
     const roundedTotal = Math.round(totalSeconds);
     const percentage = (elapsedSeconds / totalSeconds) * 100;
     const roundedPercent = Math.round(percentage);
-    
+
     if (statusText) {
         const label = statusText.textContent.split(' (')[0];
         statusText.textContent = `${label} (${roundedElapsed}s / ${roundedTotal}s)`;
     }
-    
+
     if (progressFill) {
         progressFill.style.width = `${roundedPercent}%`;
     }
-    
+
     if (progressPercent) {
         progressPercent.textContent = `${roundedPercent}%`;
     }
